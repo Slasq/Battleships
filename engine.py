@@ -6,9 +6,9 @@ class Ship:
         self.col = random.randrange(0, 9)
         self.size = size
         self.orientation = random.choice(["h", "v"])
-        self.index = self.index()
+        self.index = self.get_index()
 
-    def index(self):
+    def get_index(self):
         start_index = self.row * 10 + self.col
 
         if self.orientation == "h":
@@ -55,7 +55,15 @@ class player:
                             break
 
                     # Ukladanie statkow
-                    if placement_legal:
-                        self.ships.append(ship)
-                        placed = True
+                if placement_legal:
+                    self.ships.append(ship)
+                    placed = True
 
+    def test_board(self):
+        all = [i for ship in self.ships for i in ship.index]
+        index = ['-' if i not in all else "X" for i in range(100)]
+        for row in range(10):
+            print(" ".join(index[row * 10 : (row + 1) * 10]))
+
+p = player()
+p.test_board()
