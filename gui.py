@@ -31,7 +31,8 @@ GREEN = (0, 255, 0)
 RED = (255, 0, 0)
 BLUE = (0, 0, 255)
 UNKNOWN_GREY = (129, 133, 137)
-COLORS = {"U": UNKNOWN_GREY, "H": RED, "M": BLUE}
+BLACK = (0, 0, 0)
+COLORS = {"U": UNKNOWN_GREY, "H": RED, "M": BLUE, "S":BLACK}
 
 # Rysowanie grida
 def draw_grid(player, left = 0, top = 0, search = False):
