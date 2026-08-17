@@ -28,14 +28,22 @@ SCREEN = pygame.display.set_mode((WIDTH, HEIGHT))
 GREY = (40, 50, 60)
 WHITE = (255, 250, 250)
 GREEN = (0, 255, 0)
+RED = (255, 0, 0)
+BLUE = (0, 0, 255)
+UNKNOWN_GREY = (129, 133, 137)
+COLORS = {"U": UNKNOWN_GREY, "H": RED, "M": BLUE}
 
 # Rysowanie grida
-def draw_grid(left = 0, top = 0):
+def draw_grid(player, left = 0, top = 0, search = False):
     for i in range(100):
         x = left + i % 10 * GRID_SIZE
         y = top + i // 10 * GRID_SIZE
         square = pygame.Rect(x, y, GRID_SIZE, GRID_SIZE)
         pygame.draw.rect(SCREEN, WHITE, square, width = 3)
+        if search:
+            x += GRID_SIZE // 2
+            y += GRID_SIZE // 2
+            pygame.draw.circle(SCREEN, COLORS[player.search[i]], (x, y), radius=GRID_SIZE // 4)
 
 # Dodawanie statkow na plansze
 def draw_ships(player, left = 0, top = 0):
@@ -55,6 +63,8 @@ def draw_ships(player, left = 0, top = 0):
 # Gracze
 player1 = player()
 player2 = player()
+player1.search[0] = "M"
+player2.search[5] = "H"
 
 # Interakcje
 animation = True
@@ -79,12 +89,12 @@ while animation:
         SCREEN.fill(GREY)
 
         # Serach grid
-        draw_grid()
-        draw_grid(left = (WIDTH - HORIZON)//2 + HORIZON)
+        draw_grid(player1, search = True)
+        draw_grid(player2, search = True ,left = (WIDTH - HORIZON)//2 + HORIZON)
 
         # Positioning grid
-        draw_grid(top = (HEIGHT - VERTICAL)//2 + VERTICAL)
-        draw_grid(left = (WIDTH - HORIZON)//2 + HORIZON, top = (HEIGHT - VERTICAL)//2 + VERTICAL)
+        draw_grid(player1, top = (HEIGHT - VERTICAL)//2 + VERTICAL)
+        draw_grid(player2, left = (WIDTH - HORIZON)//2 + HORIZON, top = (HEIGHT - VERTICAL)//2 + VERTICAL)
 
         # Nanoszenie statkow graczy
         draw_ships(player1, top = (HEIGHT - VERTICAL)//2 + VERTICAL)
