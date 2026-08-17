@@ -73,14 +73,17 @@ class Game:
         self.player2 = player()
         self.player1_turn = True
         self.over = False
+        self.result = None
 
     def move(self, i):
         player = self.player1 if self.player1_turn else self.player2
         enemy = self.player2 if self.player1_turn else self.player1
-        
+        hit = False
+
         # Hit "H" or miss "M"
         if i in enemy.indexes:
             player.search[i] = "H"
+            hit = True
         else:
             player.search[i] = "M"
         
@@ -96,4 +99,14 @@ class Game:
                 for i in ship.indexes:
                     player.search[i] = "S"
 
-        self.player1_turn = not self.player1_turn
+        # Koniec gry
+        game_over = True
+        for i in enemy.indexes:
+            if player.search[i] == "U":
+                game_over = False
+        self.over = game_over
+        self.result = 1 if self.player1_turn else 2
+
+        # Zmiana tury
+        if not hit:
+            self.player1_turn = not self.player1_turn
