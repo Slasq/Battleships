@@ -6,9 +6,9 @@ class Ship:
         self.col = random.randrange(0, 9)
         self.size = size
         self.orientation = random.choice(["h", "v"])
-        self.index = [i for ship in self.ship for i in ship.index]
+        self.indexes = self.get_indexes()
 
-    def get_index(self):
+    def get_indexes(self):
         start_index = self.row * 10 + self.col
 
         if self.orientation == "h":
@@ -33,7 +33,7 @@ class player:
 
                 # Czy pozycja jest legalna
                 placement_legal = True
-                for i in ship.index:
+                for i in ship.indexes:
 
                     # Index  < 100
                     if i >= 100:
@@ -50,7 +50,7 @@ class player:
 
                     # Czy sie nakladaja
                     for other_ship in self.ships:
-                        if i in other_ship.index:
+                        if i in other_ship.indexes:
                             placement_legal = False
                             break
 
@@ -59,8 +59,10 @@ class player:
                     self.ships.append(ship)
                     placed = True
 
+        self.indexes = [i for ship in self.ships for i in ship.indexes]
+
     def test_board(self):
-        all = [i for ship in self.ships for i in ship.index]
+        all = [i for ship in self.ships for i in ship.indexes]
         index = ['-' if i not in all else "X" for i in range(100)]
         for row in range(10):
             print(" ".join(index[row * 10 : (row + 1) * 10]))
@@ -77,7 +79,7 @@ class Game:
         enemy = self.player2 if self.player1_turn else self.player1
         
         # Hit "H" or miss "M"
-        if i in enemy.index:
+        if i in enemy.indexes:
             player.search[i] = "H"
         else:
             player.search[i] = "M"
@@ -85,13 +87,13 @@ class Game:
         # Sprawdza czy jest zatopiony ("S")
         for ship in enemy.ships:
             sunk = True
-            for i in ship.index:
+            for i in ship.indexes:
                 if player.search[i] == "U":
                     sunk = False
                     break
 
-                if sunk:
-                    for i in ship.index:
-                        player.search[i] = "S"
+            if sunk:
+                for i in ship.indexes:
+                    player.search[i] = "S"
 
         self.player1_turn = not self.player1_turn
