@@ -68,12 +68,15 @@ class player:
             print(" ".join(index[row * 10 : (row + 1) * 10]))
 
 class Game: 
-    def __init__(self):
+    def __init__(self, human1, human2):
+        self.human1 = human1
+        self.human2 = human2
         self.player1 = player()
         self.player2 = player()
         self.player1_turn = True
         self.over = False
         self.result = None
+        self.computer_turn = True if not self.human1 else False
 
     def move(self, i):
         player = self.player1 if self.player1_turn else self.player2
@@ -110,3 +113,14 @@ class Game:
         # Zmiana tury
         if not hit:
             self.player1_turn = not self.player1_turn
+
+        # Zmiana między komputerem a człowiekiem
+        if (self.human and not self.human2) or (not self.human1 and self.human2):
+            self.computer_turn = not self.computer_turn
+
+    def random_moves(self):
+        search_random = self.player1.search if self.player1_turn else self.player2.search
+        unknown = [i for i, square in enumerate(search_random) if square == "U"]
+        if len(unknown) > 0:
+            random_index = random.choice(unknown)
+            self.move(random_index)

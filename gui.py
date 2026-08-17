@@ -41,6 +41,11 @@ UNKNOWN_GREY = (129, 133, 137)
 BLACK = (0, 0, 0)
 COLORS = {"U": UNKNOWN_GREY, "H": RED, "M": BLUE, "S":BLACK}
 
+HUMAN1 = True
+HUMAN2 = True
+COMPUTER1 = True
+COMPUTER2 = True
+
 # Rysowanie grida
 def draw_grid(player, left = 0, top = 0, search = False):
     for i in range(100):
