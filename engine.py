@@ -6,7 +6,7 @@ class Ship:
         self.col = random.randrange(0, 9)
         self.size = size
         self.orientation = random.choice(["h", "v"])
-        self.index = self.get_index()
+        self.index = [i for ship in self.ship for i in ship.index]
 
     def get_index(self):
         start_index = self.row * 10 + self.col
@@ -79,7 +79,9 @@ class Game:
         # Hit "H" or miss "M"
         if i in enemy.index:
             player.search[i] = "H"
-
+        else:
+            player.search[i] = "M"
+        
         # Sprawdza czy jest zatopiony ("S")
         for ship in enemy.ships:
             sunk = True
@@ -92,5 +94,4 @@ class Game:
                     for i in ship.index:
                         player.search[i] = "S"
 
-            else:
-                player.search[i] = "M"
+        self.player1_turn = not self.player1_turn
