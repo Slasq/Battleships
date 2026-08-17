@@ -65,5 +65,5 @@ class player:
         for row in range(10):
             print(" ".join(index[row * 10 : (row + 1) * 10]))
 
-p = player()
-p.test_board()
+#p = player()
+#p.test_board()

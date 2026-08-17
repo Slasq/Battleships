@@ -1,4 +1,5 @@
 import pygame
+from engine import player
 
 pygame.init()
 pygame.display.set_caption("Statki")
@@ -24,6 +25,7 @@ SCREEN = pygame.display.set_mode((WIDTH, HEIGHT))
 # Kolor
 GREY = (40, 50, 60)
 WHITE = (255, 250, 250)
+GREEN = (0, 255, 0)
 
 # Rysowanie grida
 def draw_grid(left = 0, top = 0):
@@ -33,7 +35,23 @@ def draw_grid(left = 0, top = 0):
         square = pygame.Rect(x, y, GRID_SIZE, GRID_SIZE)
         pygame.draw.rect(SCREEN, WHITE, square, width = 3)
 
+# Dodawanie statkow na plansze
+def draw_ships(player, left = 0, top = 0):
+    for ship in player.ships:
+        x = left + ship.col * GRID_SIZE
+        y = top + ship.row * GRID_SIZE
+        if ship.orientation == "h":
+            WIDTH = ship.size * GRID_SIZE
+            HEIGHT = GRID_SIZE
+        else:
+            WIDTH = GRID_SIZE
+            HEIGHT = ship.size * GRID_SIZE
+        rectangle = pygame.Rect(x, y, WIDTH, HEIGHT)
+        pygame.draw.rect(SCREEN, GREEN, rectangle)
 
+
+
+player = player()
 # Interakcje
 animation = True
 pauza = False
@@ -63,5 +81,8 @@ while animation:
         # Positioning grid
         draw_grid(top = (HEIGHT - VERTICAL)//2 + VERTICAL)
         draw_grid(left = (WIDTH - HORIZON)//2 + HORIZON, top = (HEIGHT - VERTICAL)//2 + VERTICAL)
+
+        # Nanoszenie statkow
+        draw_ships(player)
 
         pygame.display.flip()
