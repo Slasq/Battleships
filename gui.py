@@ -1,5 +1,5 @@
 import pygame
-from engine import player
+from engine import player, Game
 
 pygame.init()
 pygame.display.set_caption("Statki")
@@ -59,12 +59,7 @@ def draw_ships(player, left = 0, top = 0):
         rectangle = pygame.Rect(x, y, WIDTH, HEIGHT)
         pygame.draw.rect(SCREEN, GREEN, rectangle, border_radius = 12)
 
-
-# Gracze
-player1 = player()
-player2 = player()
-player1.search[0] = "M"
-player2.search[5] = "H"
+game = Game()
 
 # Interakcje
 animation = True
@@ -76,10 +71,20 @@ while animation:
         if event.type == pygame.QUIT:
             animation = False
 
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            x, y = pygame.mouse.get_pos()
+            if game.player1_turn and x < GRID_SIZE * 10 and y < 10 * GRID_SIZE:
+                row = y // GRID_SIZE
+                col = x // GRID_SIZE
+                index = row * 10 + col
+                game.move(index)
+
+
         if event.type == pygame.KEYDOWN:
             # Wylaczenie
             if event.key == pygame.K_ESCAPE:
                 animation = False
+
             # Pauza
             if event.key == pygame.K_SPACE:
                 pauza = not pauza
@@ -89,15 +94,15 @@ while animation:
         SCREEN.fill(GREY)
 
         # Serach grid
-        draw_grid(player1, search = True)
-        draw_grid(player2, search = True ,left = (WIDTH - HORIZON)//2 + HORIZON)
+        draw_grid(game.player1, search = True)
+        draw_grid(game.player2, search = True ,left = (WIDTH - HORIZON)//2 + HORIZON)
 
         # Positioning grid
-        draw_grid(player1, top = (HEIGHT - VERTICAL)//2 + VERTICAL)
-        draw_grid(player2, left = (WIDTH - HORIZON)//2 + HORIZON, top = (HEIGHT - VERTICAL)//2 + VERTICAL)
+        draw_grid(game.player1, top = (HEIGHT - VERTICAL)//2 + VERTICAL)
+        draw_grid(game.player2, left = (WIDTH - HORIZON)//2 + HORIZON, top = (HEIGHT - VERTICAL)//2 + VERTICAL)
 
         # Nanoszenie statkow graczy
-        draw_ships(player1, top = (HEIGHT - VERTICAL)//2 + VERTICAL)
-        draw_ships(player2, left = (WIDTH - HORIZON)//2 + HORIZON)
+        draw_ships(game.player1, top = (HEIGHT - VERTICAL)//2 + VERTICAL)
+        draw_ships(game.player2, left = (WIDTH - HORIZON)//2 + HORIZON)
 
         pygame.display.flip()

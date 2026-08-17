@@ -72,24 +72,25 @@ class Game:
         self.player1_turn = True
         self.over = False
 
-        def move(self, i):
-            player = self.player1 if self.turn else self.player2
-            enemy = self.player2 if self.turn else self.player1
+    def move(self, i):
+        player = self.player1 if self.player1_turn else self.player2
+        enemy = self.player2 if self.player1_turn else self.player1
+        
+        # Hit "H" or miss "M"
+        if i in enemy.index:
+            player.search[i] = "H"
 
-            # Hit "H" or miss "M"
-            if i in enemy.index:
-                player.search[i] = "H"
+        # Sprawdza czy jest zatopiony ("S")
+        for ship in enemy.ships:
+            sunk = True
+            for i in ship.index:
+                if player.search[i] == "U":
+                    sunk = False
+                    break
 
-            # Sprawdza czy jest zatopiony ("S")
-            for ship in enemy.ships:
-                sunk = True
-                for i in ship.index:
-                    if player.search[i] == "U":
-                        sunk = False
-                        break
-                    if sunk:
-                        for i in ship.index:
-                            player.search[i] = "S"
+                if sunk:
+                    for i in ship.index:
+                        player.search[i] = "S"
 
             else:
-                player.seatch[i] = "M"
+                player.search[i] = "M"
