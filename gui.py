@@ -19,6 +19,8 @@ VERTICAL = GRID_SIZE
 WIDTH = GRID_SIZE * COLS
 HEIGHT = GRID_SIZE * ROWS
 
+INDENT = 10
+
 # Ekran
 SCREEN = pygame.display.set_mode((WIDTH, HEIGHT))
 
@@ -38,20 +40,22 @@ def draw_grid(left = 0, top = 0):
 # Dodawanie statkow na plansze
 def draw_ships(player, left = 0, top = 0):
     for ship in player.ships:
-        x = left + ship.col * GRID_SIZE
-        y = top + ship.row * GRID_SIZE
+        x = left + ship.col * GRID_SIZE + INDENT
+        y = top + ship.row * GRID_SIZE + INDENT
         if ship.orientation == "h":
-            WIDTH = ship.size * GRID_SIZE
-            HEIGHT = GRID_SIZE
+            WIDTH = ship.size * GRID_SIZE - 2 * INDENT
+            HEIGHT = GRID_SIZE - 2 * INDENT
         else:
-            WIDTH = GRID_SIZE
-            HEIGHT = ship.size * GRID_SIZE
+            WIDTH = GRID_SIZE - 2 * INDENT
+            HEIGHT = ship.size * GRID_SIZE - 2 * INDENT
         rectangle = pygame.Rect(x, y, WIDTH, HEIGHT)
-        pygame.draw.rect(SCREEN, GREEN, rectangle)
+        pygame.draw.rect(SCREEN, GREEN, rectangle, border_radius = 12)
 
 
+# Gracze
+player1 = player()
+player2 = player()
 
-player = player()
 # Interakcje
 animation = True
 pauza = False
@@ -82,7 +86,8 @@ while animation:
         draw_grid(top = (HEIGHT - VERTICAL)//2 + VERTICAL)
         draw_grid(left = (WIDTH - HORIZON)//2 + HORIZON, top = (HEIGHT - VERTICAL)//2 + VERTICAL)
 
-        # Nanoszenie statkow
-        draw_ships(player)
+        # Nanoszenie statkow graczy
+        draw_ships(player1, top = (HEIGHT - VERTICAL)//2 + VERTICAL)
+        draw_ships(player2, left = (WIDTH - HORIZON)//2 + HORIZON)
 
         pygame.display.flip()
