@@ -42,9 +42,7 @@ BLACK = (0, 0, 0)
 COLORS = {"U": UNKNOWN_GREY, "H": RED, "M": BLUE, "S":BLACK}
 
 HUMAN1 = True
-HUMAN2 = True
-COMPUTER1 = True
-COMPUTER2 = True
+HUMAN2 = False
 
 # Rysowanie grida
 def draw_grid(player, left = 0, top = 0, search = False):
@@ -72,7 +70,7 @@ def draw_ships(player, left = 0, top = 0):
         rectangle = pygame.Rect(x, y, WIDTH, HEIGHT)
         pygame.draw.rect(SCREEN, GREEN, rectangle, border_radius = 12)
 
-game = Game()
+game = Game(HUMAN1, HUMAN2)
 
 # Interakcje
 animation = True
@@ -111,7 +109,7 @@ while animation:
 
             # Restart
             if event.key == pygame.K_RETURN:
-                game = Game()
+                game = Game(HUMAN1, HUMAN2)
 
         # Wywolanie
     if not pauza:
@@ -128,6 +126,10 @@ while animation:
         # Nanoszenie statkow graczy
         draw_ships(game.player1, top = TOP_INDENT)
         draw_ships(game.player2, left = LEFT_INDENT)
+
+        # Ruch losowy
+        if not game.over and game.computer_turn:
+            game.random_moves()
 
         # Wynik gry
         if game.over:
