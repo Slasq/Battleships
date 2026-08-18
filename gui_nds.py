@@ -49,7 +49,7 @@ TILE_W, TILE_H = 16, 8
 COLS = "ABCDEFGHIJ"
 
 pygame.init()
-pygame.display.set_caption("Battleship - Pokemon RL Edition")
+pygame.display.set_caption("Battleship")
 
 
 def load_font(size):
