@@ -41,7 +41,7 @@ UNKNOWN_GREY = (129, 133, 137)
 BLACK = (0, 0, 0)
 COLORS = {"U": UNKNOWN_GREY, "H": RED, "M": BLUE, "S":BLACK}
 
-HUMAN1 = True
+HUMAN1 = False
 HUMAN2 = False
 
 # Rysowanie grida
@@ -82,20 +82,19 @@ while animation:
         if event.type == pygame.QUIT:
             animation = False
 
-        if event.type == pygame.MOUSEBUTTONDOWN:
+        if event.type == pygame.MOUSEBUTTONDOWN and not game.over:
             x, y = pygame.mouse.get_pos()
-            if not game.over:
-                if game.player1_turn and x < GRID_SIZE * 10 and y < GRID_SIZE * 10:
-                    row = y // GRID_SIZE
-                    col = x // GRID_SIZE
-                    index = row * 10 + col
-                    game.move(index)
+            if game.player1_turn and x < GRID_SIZE * 10 and y < GRID_SIZE * 10:
+                row = y // GRID_SIZE
+                col = x // GRID_SIZE
+                index = row * 10 + col
+                game.move(index)
 
-                elif not game.player1_turn and x >= LEFT_INDENT and x < LEFT_INDENT + GRID_SIZE * 10 and y >= TOP_INDENT and y < TOP_INDENT + GRID_SIZE * 10:
-                    row = (y - TOP_INDENT) // GRID_SIZE
-                    col = (x - LEFT_INDENT) // GRID_SIZE
-                    index = row * 10 + col
-                    game.move(index)
+            elif not game.player1_turn and x >= LEFT_INDENT and x < LEFT_INDENT + GRID_SIZE * 10 and y >= TOP_INDENT and y < TOP_INDENT + GRID_SIZE * 10:
+                row = (y - TOP_INDENT) // GRID_SIZE
+                col = (x - LEFT_INDENT) // GRID_SIZE
+                index = row * 10 + col
+                game.move(index)
 
 
         if event.type == pygame.KEYDOWN:
@@ -129,7 +128,7 @@ while animation:
 
         # Ruch losowy
         if not game.over and game.computer_turn:
-            game.random_moves()
+            game.basic_ai()
 
         # Wynik gry
         if game.over:

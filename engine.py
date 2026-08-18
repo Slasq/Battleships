@@ -1,11 +1,18 @@
 import random
+import agent
 
 class Ship:
     def __init__(self, size):
-        self.row = random.randrange(0, 9)
-        self.col = random.randrange(0, 9)
         self.size = size
         self.orientation = random.choice(["h", "v"])
+
+        # Losowanie pozycji startowej tak aby była na planszy
+        if self.orientation == "h":
+            self.row = random.randrange(0, 10)
+            self.col = random.randrange(0, 10 - self.size + 1)
+        else:  # "v"
+            self.row = random.randrange(0, 10 - self.size + 1)
+            self.col = random.randrange(0, 10)
         self.indexes = self.get_indexes()
 
     def get_indexes(self):
@@ -44,7 +51,11 @@ class player:
                     new_row = i // 10
                     new_col = i % 10
 
-                    if new_row != ship.row and new_col != ship.col:
+                    # Dodatkowa walidacja indexów
+                    if ship.orientation == "h" and new_row != ship.row:
+                        placement_legal = False
+                        break
+                    if ship.orientation == "v" and new_col != ship.col:
                         placement_legal = False
                         break
 
@@ -117,9 +128,9 @@ class Game:
             if (self.human1 and not self.human2) or (not self.human1 and self.human2):
                 self.computer_turn = not self.computer_turn
 
+    # Wywolanie komputera
     def random_moves(self):
-        search_random = self.player1.search if self.player1_turn else self.player2.search
-        unknown = [i for i, square in enumerate(search_random) if square == "U"]
-        if len(unknown) > 0:
-            random_index = random.choice(unknown)
-            self.move(random_index)
+        agent.random_moves(self)
+
+    def basic_ai(self):
+        agent.basic_ai(self)
