@@ -113,10 +113,9 @@ class Game:
         # Zmiana tury
         if not hit:
             self.player1_turn = not self.player1_turn
-
-        # Zmiana między komputerem a człowiekiem
-        if (self.human1 and not self.human2) or (not self.human1 and self.human2):
-            self.computer_turn = not self.computer_turn
+            # Zmiana między komputerem a człowiekiem
+            if (self.human1 and not self.human2) or (not self.human1 and self.human2):
+                self.computer_turn = not self.computer_turn
 
     def random_moves(self):
         search_random = self.player1.search if self.player1_turn else self.player2.search
