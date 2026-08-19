@@ -1,4 +1,4 @@
-"""Eksperymentalny UI Pokemon RL — pygame, nie HTML."""
+"""UI gry Battleship — pygame."""
 
 from pathlib import Path
 
@@ -10,7 +10,6 @@ from engine import Game
 ROOT = Path(__file__).resolve().parent
 FONT_PATH = ROOT / "assets" / "PressStart2P-Regular.ttf"
 
-# --- paleta z mockupu ---
 BEZEL = (17, 17, 17)
 BEZEL_EDGE = (48, 56, 68)
 
@@ -58,7 +57,6 @@ def load_font(size):
     return pygame.font.SysFont("Consolas", size, bold=True)
 
 
-# Press Start 2P: 8px miesci sie w przyciskach, 10px na HUD/dialog.
 FONT_MARK = load_font(8)
 FONT_SM = load_font(8)
 FONT_MD = load_font(8)
@@ -192,7 +190,7 @@ def draw_iso_cell(surf, cx, cy, fill, side, lift=0, mark=None, outline=None):
         surf.blit(glyph, rect)
 
 
-class NdsUi:
+class BattleshipUi:
     SCALE = 2
     BEZEL_PAD = 14
     SCREEN_GAP = 16
@@ -215,7 +213,6 @@ class NdsUi:
         self.top_bezel = self.top_screen_rect.inflate(pad, pad)
         self.bot_bezel = self.bot_screen_rect.inflate(pad, pad)
 
-        # izometryczne origin (środek komórki 0,0)
         self.ai_origin = (228, 42)
         self.player_origin = (92, 128)
 
@@ -248,10 +245,12 @@ class NdsUi:
         self.paused = False
         self.auto_left = 0
         self.ai_delay = 0
+        self.shot_anim_idx = None
+        self.shot_anim_until = 0
         self.epsilon = 0.05
         self.epoch = 8402
         self.dialog = [
-            "Wild DQN_AGENT appeared!",
+            "Gra rozpoczeta!",
             "Wybierz atak na dolnym ekranie.",
         ]
         self.running = True
@@ -283,19 +282,20 @@ class NdsUi:
         return "water"
 
     def fire(self, index, move_name):
-        if self.game.over or self.paused or self.auto_left or self.ai_delay:
+        if self.game.over or self.paused or self.auto_left > 0 or self.ai_delay > 0:
             return
         if not self.game.player1_turn:
-            self.dialog = ["Poczekaj na turę ENV_WRAPPER."]
+            self.dialog = ["Poczekaj na swoja ture."]
             return
         if self.game.player1.search[index] != "U":
-            self.dialog = [f"{coord_label(index)} już ostrzelane.", "Wybierz inne pole."]
+            self.dialog = [f"{coord_label(index)} juz ostrzelane.", "Wybierz inne pole."]
             return
 
-        shooter = "ENV_WRAPPER"
         self.game.move(index)
+        self.shot_anim_idx = index
+        self.shot_anim_until = pygame.time.get_ticks() + 550
         result = self.game.player1.search[index]
-        self._announce(shooter, move_name, index, result)
+        self._announce("GRACZ", move_name, index, result)
         self.predicted = None
         if self.game.over:
             return
@@ -303,18 +303,17 @@ class NdsUi:
             self.ai_delay = 700
 
     def _announce(self, who, move_name, index, result):
-        wild = "Dziki " if who == "DQN_AGENT" else ""
-        line1 = f"{wild}{who} użył {move_name}!"
+        line1 = f"{who} uzywa {move_name}!"
         if result == "M":
-            line2 = f"Pudło w {coord_label(index)}..."
+            line2 = f"Pudlo w {coord_label(index)}..."
         elif result == "S":
-            line2 = f"Trafienie krytyczne! Statek zatopiony {coord_label(index)}!"
+            line2 = f"Trafienie! Statek zatopiony {coord_label(index)}!"
         else:
-            line2 = f"Trafienie krytyczne w {coord_label(index)}!"
+            line2 = f"Trafienie w {coord_label(index)}!"
         self.dialog = [line1, line2]
         if self.game.over:
-            winner = "ENV_WRAPPER" if self.game.result == 1 else "DQN_AGENT"
-            self.dialog.append(f"{winner} wygrywa walkę!")
+            winner = "GRACZ" if self.game.result == 1 else "AI"
+            self.dialog.append(f"{winner} wygrywa!")
 
     def do_q_predict(self):
         if self.game.over or not self.game.player1_turn:
@@ -325,20 +324,19 @@ class NdsUi:
         self.predicted = idx
         self.cursor = idx
         self.dialog = [
-            "ENV_WRAPPER użył Q-PREDICT!",
-            f"Sieć wskazuje {coord_label(idx)}.",
+            "GRACZ uzywa Q-PREDICT!",
+            f"Siec wskazuje {coord_label(idx)}.",
         ]
 
     def do_env_step(self):
-        target = self.cursor
-        self.fire(target, "ENV.STEP()")
+        self.fire(self.cursor, "ENV.STEP()")
 
     def do_train(self):
         if self.game.over:
             return
         self.auto_left = 100
         self.epoch += 100
-        self.dialog = ["TRAIN(100) — pętla uczenia", "Agent rozgrywa 100 kroków..."]
+        self.dialog = ["TRAIN(100) — petla uczenia", "Agent rozgrywa 100 krokow..."]
 
     def do_epsilon(self):
         self.epsilon = min(1.0, self.epsilon + 0.05)
@@ -363,13 +361,13 @@ class NdsUi:
                 if idx is None:
                     self.auto_left = 0
                     break
-                who = "ENV_WRAPPER" if self.game.player1_turn else "DQN_AGENT"
+                who = "GRACZ" if self.game.player1_turn else "AI"
                 self.game.move(idx)
-                result = (self.game.player1.search if who == "ENV_WRAPPER" else self.game.player2.search)[idx]
+                result = (self.game.player1.search if who == "GRACZ" else self.game.player2.search)[idx]
                 self._announce(who, "TRAIN", idx, result)
                 self.auto_left -= 1
             if self.auto_left <= 0 and not self.game.over:
-                self.dialog = ["Trening zakończony.", "Twoja tura, ENV_WRAPPER."]
+                self.dialog = ["Trening zakonczony.", "Twoja tura, GRACZ."]
                 if not self.game.player1_turn:
                     self.ai_delay = 400
             return
@@ -377,14 +375,17 @@ class NdsUi:
         if self.game.computer_turn and not self.game.player1_turn:
             self.ai_delay -= dt
             if self.ai_delay <= 0:
+                self.ai_delay = 0
                 idx = agent.pick_move(self.game.player2.search)
                 if idx is None:
                     return
                 self.game.move(idx)
                 result = self.game.player2.search[idx]
-                self._announce("DQN_AGENT", "Q-PREDICT", idx, result)
+                self._announce("AI", "Q-PREDICT", idx, result)
                 if not self.game.over and not self.game.player1_turn:
                     self.ai_delay = 420
+                else:
+                    self.ai_delay = 0
 
     def move_cursor(self, dc, dr):
         row, col = self.cursor // 10, self.cursor % 10
@@ -483,12 +484,22 @@ class NdsUi:
 
         ai_left, ai_total = remaining_hp(self.game.player2.indexes, self.game.player1.search)
         pl_left, pl_total = remaining_hp(self.game.player1.indexes, self.game.player2.search)
-        self._hud(surf, 8, 8, "DQN_AGENT", 99, ai_left / ai_total)
-        self._hud(surf, SCREEN_W - 158, SCREEN_H - 50, "ENV_WRAPPER", 12, pl_left / pl_total)
+        self._hud(surf, 8, 8, "AI", 99, ai_left / ai_total)
+        self._hud(surf, SCREEN_W - 158, SCREEN_H - 50, "GRACZ", 12, pl_left / pl_total)
 
         shine = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
         pygame.draw.polygon(shine, (255, 255, 255, 18), [(0, 0), (280, 0), (200, 90), (0, 70)])
         surf.blit(shine, (0, 0))
+
+        if self.game.over:
+            overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 130))
+            surf.blit(overlay, (0, 0))
+            winner = "GRACZ" if self.game.result == 1 else "AI"
+            msg = FONT_LG.render(f"{winner} WINS!", False, (255, 255, 255))
+            surf.blit(msg, msg.get_rect(center=(SCREEN_W // 2, SCREEN_H // 2 - 10)))
+            hint = FONT_MD.render("Press R to restart", False, (255, 255, 255))
+            surf.blit(hint, hint.get_rect(center=(SCREEN_W // 2, SCREEN_H // 2 + 18)))
 
     def _platform(self, surf, origin):
         cx, cy = origin[0], origin[1] + 36
@@ -500,25 +511,42 @@ class NdsUi:
 
     def _board(self, surf, origin, enemy):
         lifts = {"water": 0, "ship": 2, "hit": 4, "miss": 1}
+        bump_active = (
+            enemy
+            and self.shot_anim_idx is not None
+            and pygame.time.get_ticks() < self.shot_anim_until
+        )
         order = sorted(range(100), key=lambda i: (i // 10 + i % 10, i // 10))
         for i in order:
             col, row = i % 10, i // 10
             cx, cy = iso_center(col, row, origin)
             kind = self.cell_enemy(i) if enemy else self.cell_own(i)
             checker = (row + col) % 2 == 0
+            bump_cell = bump_active and i == self.shot_anim_idx
+            extra_lift = 2 if bump_cell else 0
             if kind == "water":
                 fill = CELL_WATER if checker else lerp(CELL_WATER, (90, 170, 230), 0.25)
-                draw_iso_cell(surf, cx, cy, fill, darken(CELL_WATER), lift=0)
+                draw_iso_cell(surf, cx, cy, fill, darken(CELL_WATER), lift=extra_lift)
             elif kind == "ship":
-                draw_iso_cell(surf, cx, cy, CELL_SHIP, CELL_SHIP_SIDE, lift=2)
+                draw_iso_cell(surf, cx, cy, CELL_SHIP, CELL_SHIP_SIDE, lift=2 + extra_lift)
             elif kind == "hit":
-                draw_iso_cell(surf, cx, cy, CELL_HIT, CELL_HIT_SIDE, lift=4, mark="X")
+                draw_iso_cell(surf, cx, cy, CELL_HIT, CELL_HIT_SIDE, lift=4 + extra_lift, mark="X")
             elif kind == "miss":
-                draw_iso_cell(surf, cx, cy, CELL_MISS, CELL_MISS_SIDE, lift=1, mark="o")
+                draw_iso_cell(surf, cx, cy, CELL_MISS, CELL_MISS_SIDE, lift=1 + extra_lift, mark="o")
 
-            if enemy and i == self.predicted:
+            if bump_cell:
+                ring_lift = lifts[kind] + extra_lift
+                if kind == "hit":
+                    ring_col = (255, 70, 70)
+                elif kind == "miss":
+                    ring_col = (210, 210, 210)
+                else:
+                    ring_col = CELL_CURSOR
+                pygame.draw.polygon(surf, ring_col, diamond(cx, cy - ring_lift), 3)
+
+            if enemy and i == self.predicted and not bump_cell:
                 pygame.draw.polygon(surf, CELL_PREDICT, diamond(cx, cy - lifts[kind]), 2)
-            if enemy and i == self.cursor:
+            if enemy and i == self.cursor and not bump_cell:
                 pygame.draw.polygon(surf, CELL_CURSOR, diamond(cx, cy - lifts[kind]), 2)
 
     def _hud(self, surf, x, y, name, lvl, ratio):
@@ -547,8 +575,8 @@ class NdsUi:
         pygame.draw.line(surf, UI_BORDER, (0, 54), (SCREEN_W, 54), 3)
         kw, st, cm = (248, 168, 56), (168, 224, 120), (170, 170, 170)
         r = draw_text(surf, "import", FONT_SM, kw, (10, 6))
-        draw_text(surf, " gym as gym", FONT_SM, (248, 248, 248), (r.right, 6))
-        r = draw_text(surf, "gym.make(", FONT_SM, (248, 248, 248), (10, 20))
+        draw_text(surf, " battleships", FONT_SM, (248, 248, 248), (r.right, 6))
+        r = draw_text(surf, "game.start(", FONT_SM, (248, 248, 248), (10, 20))
         r = draw_text(surf, "'Battleship-v0'", FONT_SM, st, (r.right, 20))
         draw_text(surf, ")", FONT_SM, (248, 248, 248), (r.right, 20))
         draw_text(surf, f"eps {self.epsilon:.2f}  epoch {self.epoch}", FONT_SM, cm, (10, 36))
@@ -588,6 +616,16 @@ class NdsUi:
             msg = FONT_LG.render("PAUSE", False, (255, 255, 255))
             surf.blit(msg, msg.get_rect(center=(SCREEN_W // 2, SCREEN_H // 2)))
 
+        if self.game.over:
+            overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 130))
+            surf.blit(overlay, (0, 0))
+            winner = "GRACZ" if self.game.result == 1 else "AI"
+            msg = FONT_LG.render(f"{winner} WINS!", False, (255, 255, 255))
+            surf.blit(msg, msg.get_rect(center=(SCREEN_W // 2, SCREEN_H // 2 - 10)))
+            hint = FONT_MD.render("Press R to restart", False, (255, 255, 255))
+            surf.blit(hint, hint.get_rect(center=(SCREEN_W // 2, SCREEN_H // 2 + 18)))
+
     def blit_screens(self):
         top = pygame.transform.scale(self.top_surf, self.top_screen_rect.size)
         bot = pygame.transform.scale(self.bot_surf, self.bot_screen_rect.size)
@@ -611,4 +649,4 @@ class NdsUi:
 
 
 if __name__ == "__main__":
-    NdsUi().run()
+    BattleshipUi().run()
