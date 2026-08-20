@@ -2,3 +2,4 @@ pygame-ce
 torch
 numpy
 matplotlib
+seaborn
