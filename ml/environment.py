@@ -2,8 +2,9 @@ import sys
 import os
 import numpy as np
 import torch
-from engine import Game
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from engine import Game
 
 # Mapowanie stanu pola na kanal
 STATE_MAP = {"U": 0, "M": 1, "H": 2, "S": 3}
