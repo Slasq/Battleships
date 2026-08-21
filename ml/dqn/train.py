@@ -1,3 +1,4 @@
+import argparse
 import os
 import sys
 
@@ -17,7 +18,8 @@ from ml.environment import BattleshipEnv
 # Przebieg
 NUM_EPISODES = 5000
 BATCH_SIZE = 512
-TARGET_UPDATE = 100
+TRAIN_EVERY = 4
+TARGET_SYNC = 1000
 SAVE_EVERY = 500
 
 # Feedback
@@ -32,9 +34,27 @@ EPSILON_MIN = 0.01
 DECAY_SPAN = 0.9
 
 ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
-MODEL_PATH = os.path.join(ROOT, "models", "dqn_latest.pth")
-CHECKPOINT_PATH = os.path.join(ROOT, "models", "dqn_checkpoint.pth")
-PLOT_PATH = os.path.join(ROOT, "plots", "dqn_training.png")
+TAG = "main"
+MODEL_PATH = os.path.join(ROOT, "models", f"dqn_{TAG}.pth")
+CHECKPOINT_PATH = os.path.join(ROOT, "models", f"dqn_{TAG}_checkpoint.pth")
+PLOT_PATH = os.path.join(ROOT, "plots", f"dqn_{TAG}_training.png")
+
+
+# Argumenty wiersza polecen
+def parse_args():
+    p = argparse.ArgumentParser(description="Trening DQN na statkach")
+    p.add_argument("--tag", default="main", help="nazwa przebiegu w nazwach plikow")
+    p.add_argument("--fresh", action="store_true", help="zignoruj checkpoint")
+    return p.parse_args()
+
+
+# Kazdy przebieg pisze do swoich plikow
+def use_tag(tag):
+    global TAG, MODEL_PATH, CHECKPOINT_PATH, PLOT_PATH
+    TAG = tag
+    MODEL_PATH = os.path.join(ROOT, "models", f"dqn_{tag}.pth")
+    CHECKPOINT_PATH = os.path.join(ROOT, "models", f"dqn_{tag}_checkpoint.pth")
+    PLOT_PATH = os.path.join(ROOT, "plots", f"dqn_{tag}_training.png")
 
 
 # Tempo spadku rozlozone na DECAY_SPAN przebiegu
@@ -51,10 +71,24 @@ def rolling_mean(values, window):
     return out
 
 
+# Wolne pola obok trafienia, ktore nie zatopilo statku
+def open_neighbours(search):
+    size = int(len(search) ** 0.5)
+    nb = set()
+    for idx, cell in enumerate(search):
+        if cell != "H":
+            continue
+        row, col = divmod(idx, size)
+        for r, c in ((row - 1, col), (row + 1, col), (row, col - 1), (row, col + 1)):
+            if 0 <= r < size and 0 <= c < size and search[r * size + c] == "U":
+                nb.add(r * size + c)
+    return nb
+
+
 # baseline do przebicia
 def baseline(num_games, policy):
     shots = []
-    for _ in tqdm(range(num_games), desc=f"Poprzeczka {policy}", leave=False):
+    for _ in tqdm(range(num_games), desc=f"Poprzeczka {policy}", unit="gra", leave=False):
         game = Game(human1=False, human2=False)
         count = 0
         while not game.over:
@@ -69,7 +103,7 @@ def baseline(num_games, policy):
 
 
 # Pelny stany treningowe
-def save_checkpoint(path, agent, episode, shot_history, loss_history):
+def save_checkpoint(path, agent, episode, shot_history, loss_history, steps_done):
     torch.save(
         {
             "episode": episode,
@@ -77,6 +111,8 @@ def save_checkpoint(path, agent, episode, shot_history, loss_history):
             "target": agent.target_net.state_dict(),
             "optimizer": agent.optimizer.state_dict(),
             "epsilon": agent.epsilon,
+            "learn_steps": agent.learn_steps,
+            "steps_done": steps_done,
             "shot_history": shot_history,
             "loss_history": loss_history,
         },
@@ -85,14 +121,23 @@ def save_checkpoint(path, agent, episode, shot_history, loss_history):
 
 def load_checkpoint(path, agent):
     ckpt = torch.load(path, map_location=agent.device, weights_only=False)
-    agent.policy_net.load_state_dict(ckpt["policy"])
-    agent.target_net.load_state_dict(ckpt["target"])
+
+    # Stary checkpoint nie pasuje do glowicy dueling
+    try:
+        agent.policy_net.load_state_dict(ckpt["policy"])
+        agent.target_net.load_state_dict(ckpt["target"])
+    except RuntimeError as err:
+        raise SystemExit(f"Checkpoint {path} nie pasuje do sieci.\n{err}\n"
+                         f"Uruchom z --fresh albo z innym --tag.")
+
     agent.optimizer.load_state_dict(ckpt["optimizer"])
     agent.epsilon = ckpt["epsilon"]
-    return ckpt["episode"], ckpt["shot_history"], ckpt["loss_history"]
+    agent.learn_steps = ckpt.get("learn_steps", 0)
+    return (ckpt["episode"], ckpt["shot_history"], ckpt["loss_history"],
+            ckpt.get("steps_done", 0))
 
 # Zwraca liczbe strzalow i srednia strat na jeden epizod
-def run_episode(env, agent, buffer):
+def run_episode(env, agent, buffer, batch_size, train_every, steps_done):
     state, _ = env.reset()
     done = False
     ep_loss = []
@@ -111,16 +156,32 @@ def run_episode(env, agent, buffer):
                     env.get_valid_actions())
         state = next_state
 
-        loss = train_step(agent, buffer, BATCH_SIZE)
-        if loss is not None:
-            ep_loss.append(loss)
+        # Licznik krokow gradientu co kazdy stral z train_event
+        steps_done += 1
+        if steps_done % train_every == 0:
+            loss = train_step(agent, buffer, batch_size)
+            if loss is not None:
+                ep_loss.append(loss)
 
     avg_loss = sum(ep_loss) / len(ep_loss) if ep_loss else None
-    return env.total_shots, avg_loss
+    return env.total_shots, avg_loss, steps_done
+
+
+# Ustawienia przebiegu na wejsciu
+def print_header(agent):
+    print(f"Urzadzenie : {agent.device}")
+    print(f"Epizody    : {NUM_EPISODES}")
+    print(f"Gradient   : batch {BATCH_SIZE}, krok co {TRAIN_EVERY} strzalow")
+    print(f"Siec celu  : kopia wag co {TARGET_SYNC} krokow gradientu")
+    print(f"Gamma      : {agent.gamma}")
+    print(f"Epsilon    : {EPSILON_START} do {EPSILON_MIN} przez "
+          f"{int(DECAY_SPAN * NUM_EPISODES)} epizodow")
+    print(f"Model      : {os.path.normpath(MODEL_PATH)}")
+    print()
 
 
 # Podsumowanie
-def report(ep, shot_history, loss_history, bar_basic, prev_mean):
+def report(ep, agent, buffer, shot_history, loss_history, bar_basic, prev_mean):
     window = shot_history[-REPORT_EVERY:]
     mean = sum(window) / len(window)
 
@@ -130,8 +191,9 @@ def report(ep, shot_history, loss_history, bar_basic, prev_mean):
     trend = "" if prev_mean is None else f" | zmiana {mean - prev_mean:+.1f}"
 
     tqdm.write(
-        f"ep {ep:>5} | srednia {mean:>5.1f} | min {min(window):>3} | max {max(window):>3}"
-        f" | do basic_ai {mean - bar_basic:+.1f} | loss {loss_txt}{trend}"
+        f"ep {ep:>5}/{NUM_EPISODES} | srednia {mean:>5.1f} | min {min(window):>3}"
+        f" | max {max(window):>3} | do basic_ai {mean - bar_basic:+.1f}"
+        f" | loss {loss_txt} | eps {agent.epsilon:.3f} | bufor {len(buffer)}{trend}"
     )
     return mean
 
@@ -183,47 +245,69 @@ def quick_eval(agent, bar_random, bar_basic):
 
     env = BattleshipEnv()
     shots = []
-    for _ in tqdm(range(EVAL_GAMES), desc="DQN eval", leave=False):
+    adj_ok, adj_total = 0, 0
+    for _ in tqdm(range(EVAL_GAMES), desc="DQN eval", unit="gra", leave=False):
         state, _ = env.reset()
         done = False
         while not done:
+            search = list(env.get_search())
             mask = env.get_valid_actions()
             action = agent.select_action(state, mask)
+
+            # Agent sprawdza sasiada gdy trafi
+            nb = open_neighbours(search)
+            if nb:
+                adj_total += 1
+                if action in nb:
+                    adj_ok += 1
+
             state, _, terminated, truncated, _ = env.step(action)
             done = terminated or truncated
         shots.append(env.total_shots)
 
     agent.epsilon = old_eps
 
-    print("\n" + "=" * 46)
-    print(f"{'Agent':<12} | {'Srednia':>8} | {'Min':>5} | {'Max':>5}")
-    print("-" * 46)
-    print(f"{'DQN':<12} | {np.mean(shots):>8.1f} | {min(shots):>5} | {max(shots):>5}")
-    print(f"{'basic_ai':<12} | {bar_basic:>8.1f} | {'':>5} | {'':>5}")
-    print(f"{'random':<12} | {bar_random:>8.1f} | {'':>5} | {'':>5}")
-    print("=" * 46)
+    print_table(shots, bar_random, bar_basic, adj_ok, adj_total, env.cells)
+
+
+# Tabela koncowa plus diagnostyka trybu dobijania
+def print_table(shots, bar_random, bar_basic, adj_ok, adj_total, cells):
+    full = 100.0 * sum(1 for s in shots if s >= cells) / len(shots)
+    adj = 100.0 * adj_ok / max(adj_total, 1)
+
+    print("\n" + "=" * 56)
+    print(f"{'Agent':<12} | {'Srednia':>8} | {'Min':>5} | {'Max':>5} | {'na 100':>7}")
+    print("-" * 56)
+    print(f"{'DQN':<12} | {np.mean(shots):>8.1f} | {min(shots):>5} | {max(shots):>5} | {full:>6.1f}%")
+    print(f"{'basic_ai':<12} | {bar_basic:>8.1f} | {'':>5} | {'':>5} | {'':>7}")
+    print(f"{'random':<12} | {bar_random:>8.1f} | {'':>5} | {'':>5} | {'':>7}")
+    print("-" * 56)
+    print(f"Dobijanie    : strzal w sasiada H w {adj:.1f}% krokow z wolnym sasiadem")
+    print(f"Takich krokow: {adj_total}, czyli {adj_total / len(shots):.1f} na gre")
+    print("=" * 56)
 
 
 def main():
+    args = parse_args()
+    use_tag(args.tag)
+
     env = BattleshipEnv()
     agent = DQNAgent(
         epsilon=EPSILON_START,
         epsilon_min=EPSILON_MIN,
         epsilon_decay=epsilon_decay_for(NUM_EPISODES),
+        target_sync=TARGET_SYNC,
     )
     buffer = ReplayBuffer()
 
-    print(f"Urzadzenie : {agent.device}")
-    print(f"Epizody    : {NUM_EPISODES}")
-    print(f"Epsilon    : {EPSILON_START} do {EPSILON_MIN} przez "
-          f"{int(DECAY_SPAN * NUM_EPISODES)} epizodow")
-    print()
+    print_header(agent)
 
     # Start od nowa
     start_ep = 1
+    steps_done = 0
     shot_history, loss_history = [], []
-    if os.path.exists(CHECKPOINT_PATH):
-        last_ep, shot_history, loss_history = load_checkpoint(CHECKPOINT_PATH, agent)
+    if os.path.exists(CHECKPOINT_PATH) and not args.fresh:
+        last_ep, shot_history, loss_history, steps_done = load_checkpoint(CHECKPOINT_PATH, agent)
         start_ep = last_ep + 1
         print(f"Checkpoint : wznowienie od epizodu {start_ep}, epsilon {agent.epsilon:.3f}")
         print("Bufor startuje pusty, wiec pierwsze epizody po wznowieniu nie ucza")
@@ -231,7 +315,7 @@ def main():
 
     # Bramka do poprawienia wydjanosci (by nie liczylo 4h)
     if start_ep > NUM_EPISODES:
-        print("Przebieg juz skonczony. Skasuj checkpoint, zeby zaczac od nowa.")
+        print("Przebieg juz skonczony. Uruchom z --fresh albo z innym --tag.")
         return
 
     print("Liczenie poprzeczki...")
@@ -242,18 +326,16 @@ def main():
     print()
 
     prev_mean = None
-    pbar = tqdm(range(start_ep, NUM_EPISODES + 1), desc="DQN", unit="ep",
+    pbar = tqdm(range(start_ep, NUM_EPISODES + 1), desc=f"DQN [{TAG}]", unit="ep",
                 initial=start_ep - 1, total=NUM_EPISODES)
 
     for ep in pbar:
-        shots, avg_loss = run_episode(env, agent, buffer)
+        shots, avg_loss, steps_done = run_episode(env, agent, buffer, BATCH_SIZE,
+                                                  TRAIN_EVERY, steps_done)
 
         shot_history.append(shots)
         loss_history.append(avg_loss)
         agent.decay_epsilon()
-
-        if ep % TARGET_UPDATE == 0:
-            agent.update_target()
 
         # Progress bar
         window = shot_history[-WINDOW:]
@@ -262,20 +344,23 @@ def main():
             eps=f"{agent.epsilon:.3f}",
             loss="brak" if avg_loss is None else f"{avg_loss:.3f}",
             bufor=len(buffer),
+            kroki=agent.learn_steps,
         )
 
         if ep % REPORT_EVERY == 0:
-            prev_mean = report(ep, shot_history, loss_history, bar_basic, prev_mean)
+            prev_mean = report(ep, agent, buffer, shot_history, loss_history,
+                               bar_basic, prev_mean)
 
         if ep % SAVE_EVERY == 0:
             agent.save(MODEL_PATH)
-            save_checkpoint(CHECKPOINT_PATH, agent, ep, shot_history, loss_history)
+            save_checkpoint(CHECKPOINT_PATH, agent, ep, shot_history, loss_history, steps_done)
 
     pbar.close()
 
     agent.save(MODEL_PATH)
-    save_checkpoint(CHECKPOINT_PATH, agent, NUM_EPISODES, shot_history, loss_history)
-    print(f"\nTrening skonczony. Model: {MODEL_PATH}")
+    save_checkpoint(CHECKPOINT_PATH, agent, NUM_EPISODES, shot_history, loss_history, steps_done)
+    print(f"\nTrening skonczony. Krokow gradientu: {agent.learn_steps}")
+    print(f"Model: {os.path.normpath(MODEL_PATH)}")
 
     plot(shot_history, loss_history, bar_random, bar_basic)
     quick_eval(agent, bar_random, bar_basic)

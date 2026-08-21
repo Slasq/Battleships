@@ -15,10 +15,28 @@ class DQN(nn.Module):
             layers.append(nn.ReLU())
             channels = width
 
+        self.trunk = nn.Sequential(*layers)
+
         # Jedna wartosc Q na pole
-        layers.append(nn.Conv2d(width, 1, kernel_size=1))
-        self.net = nn.Sequential(*layers)
+        self.advantage = nn.Conv2d(width, 1, kernel_size=1)
+
+        # Jedna wartosc na cala plansze
+        self.value = nn.Sequential(
+            nn.Conv2d(width, width, kernel_size=1),
+            nn.ReLU(),
+            nn.Conv2d(width, 1, kernel_size=1),
+        )
 
     def forward(self, x):
+        feat = self.trunk(x)
+
         # Flatten do wektora akcji
-        return self.net(x).flatten(start_dim=1)
+        adv = self.advantage(feat).flatten(start_dim=1)
+
+        # Srednia przewagi zbija do zera
+        adv = adv - adv.mean(dim=1, keepdim=True)
+
+        # Usrednienie do planszy
+        val = self.value(feat).mean(dim=(2, 3))
+
+        return val + adv

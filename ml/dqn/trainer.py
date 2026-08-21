@@ -56,11 +56,16 @@ def train_step(agent, replay_buffer, batch_size=512):
     q_values = agent.policy_net(states).gather(1, actions.unsqueeze(1)).squeeze(1)
 
     with torch.no_grad():
-        next_q = agent.target_net(next_states)
+        # Double DQN akcje wybiera siec uczaca
+        next_online = agent.policy_net(next_states)
 
-        # Pola sprawdzona nie sa sprawdzane drugi raz
-        next_q[masks == 0] = -float("inf")
-        max_next_q = next_q.max(dim=1).values
+        # Pola sprawdzona nie sa sprawdzane ponownie
+        next_online[masks == 0] = -float("inf")
+        best_actions = next_online.argmax(dim=1, keepdim=True)
+
+        # Wycene wybranej akcji daje siec celu
+        next_q = agent.target_net(next_states)
+        max_next_q = next_q.gather(1, best_actions).squeeze(1)
 
         # Zapelniona plansza = koniec gry
         max_next_q[masks.sum(dim=1) == 0] = 0.0
@@ -77,5 +82,8 @@ def train_step(agent, replay_buffer, batch_size=512):
     # Ciecie gradientu
     torch.nn.utils.clip_grad_norm_(agent.policy_net.parameters(), 10.0)
     agent.optimizer.step()
+
+    # Licznik pilnuje kopiowania wag do sieci celu
+    agent.count_learn_step()
 
     return loss.item()

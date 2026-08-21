@@ -3,8 +3,8 @@ import torch
 from .model import DQN
 
 class DQNAgent:
-    def __init__(self, lr=1e-4, gamma=0.99, epsilon=1.0, epsilon_min=0.01,
-                 epsilon_decay=0.995, device=None):
+    def __init__(self, lr=1e-4, gamma=0.9, epsilon=1.0, epsilon_min=0.01,
+                 epsilon_decay=0.995, target_sync=1000, device=None):
         # GPU jesli dostepne
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -22,6 +22,10 @@ class DQNAgent:
         self.target_net.eval()
 
         self.optimizer = torch.optim.Adam(self.policy_net.parameters(), lr=lr)
+
+        # Kopiowanie wag liczy z gradientu
+        self.target_sync = target_sync
+        self.learn_steps = 0
 
     # Greedy z maska akcji
     def select_action(self, state, valid_mask):
@@ -46,6 +50,12 @@ class DQNAgent:
     # Kopiowanie wag do sieci
     def update_target(self):
         self.target_net.load_state_dict(self.policy_net.state_dict())
+
+    # gradient+1 kopia wag jeśli licznik dojdzie do progu
+    def count_learn_step(self):
+        self.learn_steps += 1
+        if self.learn_steps % self.target_sync == 0:
+            self.update_target()
 
     def save(self, path):
         torch.save(self.policy_net.state_dict(), path)
