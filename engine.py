@@ -1,5 +1,5 @@
 import random
-import agent
+import heuristics
 
 class Ship:
     def __init__(self, size):
@@ -130,7 +130,7 @@ class Game:
 
     # Wywolanie komputera
     def random_moves(self):
-        agent.random_moves(self)
+        heuristics.random_moves(self)
 
     def basic_ai(self):
-        agent.basic_ai(self)
+        heuristics.basic_ai(self)
