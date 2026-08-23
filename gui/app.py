@@ -1,6 +1,7 @@
 import pygame
 
-from . import board_view, menu_view, panel_view
+from . import analysis_view, board_view, menu_view, panel_view
+from .analysis import Analysis
 from .match import Match
 from .menu import Menu
 from .panel_view import ATTACKS, ATTACK_RECTS
@@ -11,6 +12,7 @@ FPS = 60
 
 MENU = "menu"
 GAME = "game"
+ANALYSIS = "analysis"
 
 
 class App:
@@ -28,7 +30,9 @@ class App:
 
         self.menu = Menu()
         self.match = Match()
+        self.analysis = Analysis()
         self.scene = MENU
+        self.analysis_return = MENU
         self.pressed_atk = None
         self.running = True
 
@@ -47,19 +51,72 @@ class App:
         if event.type == pygame.QUIT:
             self.running = False
         elif event.type == pygame.KEYDOWN:
-            if self.scene == MENU:
+            if event.key == pygame.K_TAB and self.scene != ANALYSIS:
+                self.open_analysis()
+            elif self.scene == MENU:
                 self._menu_key(event.key)
+            elif self.scene == ANALYSIS:
+                self._analysis_key(event.key)
             else:
                 self._game_key(event.key)
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.scene == MENU:
                 self._menu_click(event.pos)
+            elif self.scene == ANALYSIS:
+                self._analysis_click(event.pos)
             else:
                 self._game_click(event.pos)
-        elif event.type == pygame.MOUSEMOTION and self.scene == MENU:
-            self._menu_hover(event.pos)
+        elif event.type == pygame.MOUSEMOTION:
+            if self.scene == MENU:
+                self._menu_hover(event.pos)
+            elif self.scene == ANALYSIS:
+                self._analysis_hover(event.pos)
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             self.pressed_atk = None
+
+    def open_analysis(self):
+        self.analysis_return = self.scene
+        self.analysis.set_hover(None)
+        self.scene = ANALYSIS
+
+    def _close_analysis(self):
+        self.scene = self.analysis_return
+
+    def _analysis_key(self, key):
+        if key in (pygame.K_ESCAPE, pygame.K_TAB):
+            self._close_analysis()
+        elif key in (pygame.K_LEFT, pygame.K_a):
+            self.analysis.move(-1, 0)
+        elif key in (pygame.K_RIGHT, pygame.K_d):
+            self.analysis.move(1, 0)
+        elif key in (pygame.K_UP, pygame.K_w):
+            self.analysis.move(0, -1)
+        elif key in (pygame.K_DOWN, pygame.K_s):
+            self.analysis.move(0, 1)
+        elif key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_k):
+            if self.analysis.activate() == "exit":
+                self._close_analysis()
+
+    def _analysis_hover(self, pos):
+        if self.layout.top_rect.collidepoint(pos):
+            local = self.layout.local(pos, self.layout.top_rect)
+            self.analysis.set_hover(analysis_view.hit_test_view(self.analysis, local))
+        elif self.layout.bot_rect.collidepoint(pos):
+            local = self.layout.local(pos, self.layout.bot_rect)
+            index = analysis_view.hit_test_buttons(local)
+            if index is not None:
+                self.analysis.selected = index
+
+    def _analysis_click(self, pos):
+        if not self.layout.bot_rect.collidepoint(pos):
+            return
+        local = self.layout.local(pos, self.layout.bot_rect)
+        index = analysis_view.hit_test_buttons(local)
+        if index is None:
+            return
+        self.analysis.selected = index
+        if self.analysis.activate(index) == "exit":
+            self._close_analysis()
 
     def _menu_key(self, key):
         if key == pygame.K_ESCAPE:
@@ -98,7 +155,9 @@ class App:
 
     def _game_key(self, key):
         match = self.match
-        if key == pygame.K_ESCAPE:
+        if key == pygame.K_a and match.over:
+            self.open_analysis()
+        elif key == pygame.K_ESCAPE:
             self.scene = MENU
         elif key == pygame.K_SPACE:
             match.paused = not match.paused
@@ -144,6 +203,9 @@ class App:
         if self.scene == MENU:
             menu_view.render_top(self.top_surf)
             menu_view.render_bottom(self.bot_surf, self.menu)
+        elif self.scene == ANALYSIS:
+            analysis_view.render_top(self.top_surf, self.analysis)
+            analysis_view.render_bottom(self.bot_surf, self.analysis)
         else:
             board_view.render(self.top_surf, self.match)
             panel_view.render(self.bot_surf, self.match, self.pressed_atk)
