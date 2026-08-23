@@ -1,5 +1,4 @@
-"""UI gry Battleship — pygame."""
-
+import os
 from pathlib import Path
 
 import pygame
@@ -40,6 +39,17 @@ CELL_MISS_SIDE = (204, 204, 204)
 CELL_CURSOR = (255, 255, 160)
 CELL_PREDICT = (255, 120, 220)
 
+HEAT_RAMP = [
+    (16, 20, 56),
+    (56, 40, 128),
+    (128, 48, 144),
+    (200, 88, 112),
+    (240, 152, 72),
+    (255, 232, 160),
+]
+
+HEAT_LIFT = 3
+
 BG = (43, 62, 80)
 BG_STRIPE = (48, 70, 90)
 
@@ -47,8 +57,40 @@ SCREEN_W, SCREEN_H = 320, 240
 TILE_W, TILE_H = 16, 8
 COLS = "ABCDEFGHIJ"
 
+BEZEL_PAD_UNIT = 7
+SCREEN_GAP_UNIT = 8
+UNIT_W = SCREEN_W + BEZEL_PAD_UNIT * 2
+UNIT_H = SCREEN_H * 2 + SCREEN_GAP_UNIT + BEZEL_PAD_UNIT * 2
+MIN_SCALE = 1.0
+MAX_SCALE = 4.0
+MARGIN_W = 0.95
+MARGIN_H = 0.92
+
 pygame.init()
 pygame.display.set_caption("Battleship")
+
+
+def desktop_size():
+    try:
+        return pygame.display.get_desktop_sizes()[0]
+    except Exception:
+        info = pygame.display.Info()
+        return info.current_w, info.current_h
+
+
+def fit_scale():
+    override = os.environ.get("BATTLESHIP_SCALE")
+    if override:
+        try:
+            value = float(override)
+            if value > 0:
+                return value
+        except ValueError:
+            pass
+    dw, dh = desktop_size()
+    by_w = dw * MARGIN_W / UNIT_W
+    by_h = dh * MARGIN_H / UNIT_H
+    return max(MIN_SCALE, min(by_w, by_h, MAX_SCALE))
 
 
 def load_font(size):
@@ -75,7 +117,6 @@ def draw_text(surf, text, font, color, pos, outline=None):
 
 
 def draw_text_in(surf, text, font, color, box, y, outline=None, pad=6):
-    """Rysuje tekst w przycisku, skalujac w poziomie gdy nie miesci sie."""
     max_w = max(8, box.w - pad * 2)
     glyph = font.render(text, False, color)
     shadow = font.render(text, False, outline) if outline is not None else None
@@ -127,6 +168,44 @@ def hp_color(ratio):
     if ratio > 0.2:
         return HP_YELLOW
     return HP_RED
+
+
+def heat_color(t):
+    t = max(0.0, min(1.0, t))
+    seg = t * (len(HEAT_RAMP) - 1)
+    i = min(int(seg), len(HEAT_RAMP) - 2)
+    return lerp(HEAT_RAMP[i], HEAT_RAMP[i + 1], seg - i)
+
+
+FLEET = [5, 4, 3, 3, 2]
+
+HIT_WEIGHT = 12
+
+
+def density_map(search):
+    score = [0.0] * 100
+    for size in FLEET:
+        for row in range(10):
+            for col in range(10):
+                for dr, dc in ((0, 1), (1, 0)):
+                    cells = []
+                    for k in range(size):
+                        r, c = row + dr * k, col + dc * k
+                        if r > 9 or c > 9:
+                            cells = []
+                            break
+                        idx = r * 10 + c
+                        if search[idx] in ("M", "S"):
+                            cells = []
+                            break
+                        cells.append(idx)
+                    if not cells:
+                        continue
+                    weight = HIT_WEIGHT if any(search[i] == "H" for i in cells) else 1.0
+                    for i in cells:
+                        if search[i] == "U":
+                            score[i] += weight
+    return score
 
 
 def remaining_hp(ship_indexes, attacker_search):
@@ -191,19 +270,16 @@ def draw_iso_cell(surf, cx, cy, fill, side, lift=0, mark=None, outline=None):
 
 
 class BattleshipUi:
-    SCALE = 2
-    BEZEL_PAD = 14
-    SCREEN_GAP = 16
-
     def __init__(self):
         self.clock = pygame.time.Clock()
         self.top_surf = pygame.Surface((SCREEN_W, SCREEN_H))
         self.bot_surf = pygame.Surface((SCREEN_W, SCREEN_H))
 
-        sw = SCREEN_W * self.SCALE
-        sh = SCREEN_H * self.SCALE
-        pad = self.BEZEL_PAD
-        gap = self.SCREEN_GAP
+        self.SCALE = fit_scale()
+        sw = round(SCREEN_W * self.SCALE)
+        sh = round(SCREEN_H * self.SCALE)
+        pad = round(BEZEL_PAD_UNIT * self.SCALE)
+        gap = round(SCREEN_GAP_UNIT * self.SCALE)
         self.win_w = sw + pad * 2
         self.win_h = sh * 2 + gap + pad * 2
         self.screen = pygame.display.set_mode((self.win_w, self.win_h))
@@ -242,6 +318,9 @@ class BattleshipUi:
         self.game = Game(True, False)
         self.cursor = 44
         self.predicted = None
+        self.show_heat = False
+        self._heat_key = None
+        self._heat = None
         self.paused = False
         self.auto_left = 0
         self.ai_delay = 0
@@ -256,12 +335,27 @@ class BattleshipUi:
         self.running = True
 
     def screen_local(self, pos, rect):
-        x = (pos[0] - rect.x) / self.SCALE
-        y = (pos[1] - rect.y) / self.SCALE
+        x = (pos[0] - rect.x) * SCREEN_W / rect.w
+        y = (pos[1] - rect.y) * SCREEN_H / rect.h
         return x, y
 
     def current_search(self):
         return self.game.player1.search if self.game.player1_turn else self.game.player2.search
+
+    def heat_values(self):
+        search = self.game.player1.search
+        key = "".join(search)
+        if self._heat_key != key:
+            raw = density_map(search)
+            top = max(raw)
+            self._heat = [v / top for v in raw] if top else [0.0] * 100
+            self._heat_key = key
+        return self._heat
+
+    def cell_lift(self, idx, kind, enemy):
+        if enemy and self.show_heat and kind == "water":
+            return int(round(self.heat_values()[idx] * HEAT_LIFT))
+        return {"water": 0, "ship": 2, "hit": 4, "miss": 1}[kind]
 
     def cell_own(self, idx):
         shot = self.game.player2.search[idx]
@@ -316,16 +410,23 @@ class BattleshipUi:
             self.dialog.append(f"{winner} wygrywa!")
 
     def do_q_predict(self):
+        self.show_heat = not self.show_heat
+        if not self.show_heat:
+            self.predicted = None
+            self.dialog = ["Heatmapa wylaczona."]
+            return
         if self.game.over or not self.game.player1_turn:
+            self.dialog = ["Heatmapa wlaczona."]
             return
         idx = agent.pick_move(self.game.player1.search)
         if idx is None:
+            self.dialog = ["Heatmapa wlaczona."]
             return
         self.predicted = idx
         self.cursor = idx
         self.dialog = [
             "GRACZ uzywa Q-PREDICT!",
-            f"Siec wskazuje {coord_label(idx)}.",
+            f"Heatmapa on. Agent wskazuje {coord_label(idx)}.",
         ]
 
     def do_env_step(self):
@@ -397,7 +498,7 @@ class BattleshipUi:
         lx, ly = local
         for i in range(100):
             kind = self.cell_enemy(i)
-            lift = {"water": 0, "ship": 2, "hit": 4, "miss": 1}[kind]
+            lift = self.cell_lift(i, kind, True)
             cx, cy = iso_center(i % 10, i // 10, origin)
             if point_in_diamond(lx, ly, cx, cy - lift):
                 return i
@@ -434,7 +535,7 @@ class BattleshipUi:
             self.move_cursor(1, 0)
         elif key in (pygame.K_RETURN, pygame.K_k):
             self.do_env_step()
-        elif key in (pygame.K_x, pygame.K_i):
+        elif key in (pygame.K_x, pygame.K_i, pygame.K_h):
             self.do_q_predict()
         elif key in (pygame.K_y, pygame.K_j):
             self.do_epsilon()
@@ -510,7 +611,6 @@ class BattleshipUi:
         surf.blit(shadow, ellipse.topleft)
 
     def _board(self, surf, origin, enemy):
-        lifts = {"water": 0, "ship": 2, "hit": 4, "miss": 1}
         bump_active = (
             enemy
             and self.shot_anim_idx is not None
@@ -524,9 +624,14 @@ class BattleshipUi:
             checker = (row + col) % 2 == 0
             bump_cell = bump_active and i == self.shot_anim_idx
             extra_lift = 2 if bump_cell else 0
+            lift_now = self.cell_lift(i, kind, enemy)
             if kind == "water":
-                fill = CELL_WATER if checker else lerp(CELL_WATER, (90, 170, 230), 0.25)
-                draw_iso_cell(surf, cx, cy, fill, darken(CELL_WATER), lift=extra_lift)
+                if enemy and self.show_heat:
+                    fill = heat_color(self.heat_values()[i])
+                    draw_iso_cell(surf, cx, cy, fill, darken(fill), lift=lift_now + extra_lift)
+                else:
+                    fill = CELL_WATER if checker else lerp(CELL_WATER, (90, 170, 230), 0.25)
+                    draw_iso_cell(surf, cx, cy, fill, darken(CELL_WATER), lift=extra_lift)
             elif kind == "ship":
                 draw_iso_cell(surf, cx, cy, CELL_SHIP, CELL_SHIP_SIDE, lift=2 + extra_lift)
             elif kind == "hit":
@@ -535,7 +640,7 @@ class BattleshipUi:
                 draw_iso_cell(surf, cx, cy, CELL_MISS, CELL_MISS_SIDE, lift=1 + extra_lift, mark="o")
 
             if bump_cell:
-                ring_lift = lifts[kind] + extra_lift
+                ring_lift = lift_now + extra_lift
                 if kind == "hit":
                     ring_col = (255, 70, 70)
                 elif kind == "miss":
@@ -545,9 +650,9 @@ class BattleshipUi:
                 pygame.draw.polygon(surf, ring_col, diamond(cx, cy - ring_lift), 3)
 
             if enemy and i == self.predicted and not bump_cell:
-                pygame.draw.polygon(surf, CELL_PREDICT, diamond(cx, cy - lifts[kind]), 2)
+                pygame.draw.polygon(surf, CELL_PREDICT, diamond(cx, cy - lift_now), 2)
             if enemy and i == self.cursor and not bump_cell:
-                pygame.draw.polygon(surf, CELL_CURSOR, diamond(cx, cy - lifts[kind]), 2)
+                pygame.draw.polygon(surf, CELL_CURSOR, diamond(cx, cy - lift_now), 2)
 
     def _hud(self, surf, x, y, name, lvl, ratio):
         box = pygame.Rect(x, y, 150, 42)
@@ -579,11 +684,20 @@ class BattleshipUi:
         r = draw_text(surf, "game.start(", FONT_SM, (248, 248, 248), (10, 20))
         r = draw_text(surf, "'Battleship-v0'", FONT_SM, st, (r.right, 20))
         draw_text(surf, ")", FONT_SM, (248, 248, 248), (r.right, 20))
-        draw_text(surf, f"eps {self.epsilon:.2f}  epoch {self.epoch}", FONT_SM, cm, (10, 36))
+        heat_txt = "heat on" if self.show_heat else "heat off"
+        draw_text(
+            surf,
+            f"eps {self.epsilon:.2f}  epoch {self.epoch}  {heat_txt}",
+            FONT_SM,
+            cm,
+            (10, 36),
+        )
 
         pygame.draw.rect(surf, (208, 216, 224), pygame.Rect(0, 54, SCREEN_W, SCREEN_H - 116))
         for i, rect in enumerate(self.atk_rects):
             name, typ, color, _ = self.atk_defs[i]
+            if i == 0 and self.show_heat:
+                typ = "TYPE/ HEAT ON"
             r = rect.move(2, 2) if self.pressed_atk == i else rect
             pygame.draw.rect(surf, color, r, border_radius=8)
             pygame.draw.rect(surf, UI_BORDER, r, 3, border_radius=8)
