@@ -5,7 +5,7 @@ ITEMS = [
     ("WYJDZ", "quit"),
 ]
 
-READY = {"play", "quit"}
+READY = {"play", "ai_vs_ai", "quit"}
 
 
 class Menu:

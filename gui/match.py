@@ -11,8 +11,17 @@ LIFT = {"water": 0, "ship": 2, "hit": 4, "miss": 1}
 SHOT_ANIM_MS = 550
 AI_DELAY_MS = 700
 AI_CHAIN_MS = 420
+AI_STEP_MS = 260
 TRAIN_STEPS = 100
 TRAIN_PER_FRAME = 2
+
+MODE_PVAI = "pvai"
+MODE_AIVAI = "aivai"
+
+SIDE_NAMES = {
+    MODE_PVAI: ("GRACZ", "AI"),
+    MODE_AIVAI: ("AI-1", "AI-2"),
+}
 
 
 def coord_label(index):
@@ -30,8 +39,10 @@ class Match:
     def __init__(self):
         self.reset()
 
-    def reset(self):
-        self.game = Game(True, False)
+    def reset(self, mode=MODE_PVAI):
+        self.mode = mode
+        self.game = Game(mode == MODE_PVAI, False)
+        self.log = []
         self.cursor = 44
         self.predicted = None
         self.show_heat = False
@@ -44,14 +55,46 @@ class Match:
         self.shot_anim_until = 0
         self.epsilon = 0.05
         self.epoch = 8402
-        self.dialog = [
-            "Gra rozpoczeta!",
-            "Wybierz atak na dolnym ekranie.",
-        ]
+        if mode == MODE_AIVAI:
+            self.dialog = ["Pojedynek agentow!", "AI-1 kontra AI-2."]
+        else:
+            self.dialog = ["Gra rozpoczeta!", "Wybierz atak na dolnym ekranie."]
 
     @property
     def over(self):
         return self.game.over
+
+    def side_names(self):
+        return SIDE_NAMES[self.mode]
+
+    def _apply(self, index):
+        first = self.game.player1_turn
+        shooter = self.game.player1 if first else self.game.player2
+        target = self.game.player2 if first else self.game.player1
+        self.game.move(index)
+        result = shooter.search[index]
+        sunk, sunk_size, cells = None, None, None
+        if result == "S":
+            for pos, ship in enumerate(target.ships):
+                if index in ship.indexes:
+                    sunk, sunk_size, cells = pos, ship.size, list(ship.indexes)
+                    break
+        self.log.append(
+            {
+                "n": len(self.log),
+                "side": 0 if first else 1,
+                "idx": index,
+                "res": result,
+                "sunk": sunk,
+                "sunk_size": sunk_size,
+                "cells": cells,
+            }
+        )
+        return result
+
+    def fleet_sizes(self, side):
+        target = self.game.player2 if side == 0 else self.game.player1
+        return [ship.size for ship in target.ships]
 
     def current_search(self):
         return self.game.player1.search if self.game.player1_turn else self.game.player2.search
@@ -101,6 +144,9 @@ class Match:
         self.cursor = row * 10 + col
 
     def fire(self, index, move_name):
+        if self.mode == MODE_AIVAI:
+            self.dialog = ["Tryb AI vs AI.", "Agenci graja sami."]
+            return
         if self.game.over or self.paused or self.auto_left > 0 or self.ai_delay > 0:
             return
         if not self.game.player1_turn:
@@ -110,11 +156,10 @@ class Match:
             self.dialog = [f"{coord_label(index)} juz ostrzelane.", "Wybierz inne pole."]
             return
 
-        self.game.move(index)
+        result = self._apply(index)
         self.shot_anim_idx = index
         self.shot_anim_until = pygame.time.get_ticks() + SHOT_ANIM_MS
-        result = self.game.player1.search[index]
-        self._announce("GRACZ", move_name, index, result)
+        self._announce(self.side_names()[0], move_name, index, result)
         self.predicted = None
         if self.game.over:
             return
@@ -135,7 +180,8 @@ class Match:
             self.dialog.append(f"{winner} wygrywa!")
 
     def winner(self):
-        return "GRACZ" if self.game.result == 1 else "AI"
+        names = self.side_names()
+        return names[0] if self.game.result == 1 else names[1]
 
     def do_q_predict(self):
         self.show_heat = not self.show_heat
@@ -193,17 +239,19 @@ class Match:
             if idx is None:
                 self.auto_left = 0
                 break
-            who = "GRACZ" if self.game.player1_turn else "AI"
-            self.game.move(idx)
-            result = (self.game.player1.search if who == "GRACZ" else self.game.player2.search)[idx]
+            who = self.side_names()[0 if self.game.player1_turn else 1]
+            result = self._apply(idx)
             self._announce(who, "TRAIN", idx, result)
             self.auto_left -= 1
         if self.auto_left <= 0 and not self.game.over:
-            self.dialog = ["Trening zakonczony.", "Twoja tura, GRACZ."]
+            self.dialog = ["Trening zakonczony.", f"Twoja tura, {self.side_names()[0]}."]
             if not self.game.player1_turn:
                 self.ai_delay = 400
 
     def _tick_ai(self, dt):
+        if self.mode == MODE_AIVAI:
+            self._tick_duel(dt)
+            return
         if not (self.game.computer_turn and not self.game.player1_turn):
             return
         self.ai_delay -= dt
@@ -213,9 +261,24 @@ class Match:
         idx = agent.pick_move(self.game.player2.search)
         if idx is None:
             return
-        self.game.move(idx)
-        self._announce("AI", "Q-PREDICT", idx, self.game.player2.search[idx])
+        result = self._apply(idx)
+        self._announce(self.side_names()[1], "Q-PREDICT", idx, result)
         if not self.game.over and not self.game.player1_turn:
             self.ai_delay = AI_CHAIN_MS
         else:
             self.ai_delay = 0
+
+    def _tick_duel(self, dt):
+        self.ai_delay -= dt
+        if self.ai_delay > 0:
+            return
+        idx = agent.pick_move(self.current_search())
+        if idx is None:
+            return
+        side = 0 if self.game.player1_turn else 1
+        result = self._apply(idx)
+        if side == 0:
+            self.shot_anim_idx = idx
+            self.shot_anim_until = pygame.time.get_ticks() + SHOT_ANIM_MS
+        self._announce(self.side_names()[side], "Q-PREDICT", idx, result)
+        self.ai_delay = AI_STEP_MS

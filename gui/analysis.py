@@ -1,113 +1,178 @@
-import random
-
 from .heatmap import normalized_density
 
-EPISODES = 15
-SAMPLES = 1000
-HIST_MIN, HIST_MAX, HIST_STEP = 30, 100, 5
-
-MODEL_NAME = "dqn_main.pth"
-MODEL_EPOCHS = 8402
-MODEL_GAMMA = 0.90
-MODEL_LR = "5e-4"
-MODEL_BUFFER = "100k"
-MODEL_EPS = 0.05
-
-AVG_DQN = 48.9
-AVG_HEURISTIC = 51.4
-AVG_RANDOM = 95.3
-
-VIEWS = ["loss", "reward", "shots", "heatmap"]
+VIEWS = ["accuracy", "timeline", "fleet", "map", "timelapse"]
 
 TITLES = {
-    "loss": "STRATA MODELU (LOSS)",
-    "reward": "NAGRODA I EPSILON",
-    "shots": "ROZKLAD STRZALOW (1000 GIER)",
-    "heatmap": "ZAGESZCZENIE (DENSITY)",
+    "accuracy": "CELNOSC NARASTAJACO",
+    "timeline": "PRZEBIEG PARTII",
+    "fleet": "ZATAPIANIE FLOTY",
+    "map": "MAPA STRZALOW",
+    "timelapse": "TIMELAPSE PRZEKONAN",
 }
 
 BUTTONS = [
-    ("WYKRES", "STRAT", "view:loss"),
-    ("NAGRODA", "EPSILON", "view:reward"),
-    ("ROZKLAD", "STRZALOW", "view:shots"),
-    ("HEATMAPA", "DENSITY", "view:heatmap"),
-    ("WIDOK", None, "toggle:iso"),
+    ("CELNOSC", "PROCENT", "view:accuracy"),
+    ("PRZEBIEG", "PARTII", "view:timeline"),
+    ("FLOTA", "ZATOPIENIA", "view:fleet"),
+    ("MAPA", "STRZALOW", "view:map"),
+    ("TIMELAPSE", "HEATMAPY", "view:timelapse"),
     ("WYJDZ", None, "exit"),
 ]
 
 EXIT_BUTTON = 5
-TOGGLE_BUTTON = 4
+MAP_VIEWS = ("map", "timelapse")
+
+HIT_RESULTS = ("H", "S")
+
+FRAME_MS = 150
+LOOP_PAUSE_MS = 1200
 
 
-def _series():
-    rng = random.Random(1337)
-    out = []
-    for i in range(EPISODES):
-        out.append(
-            {
-                "ep": (i + 1) * 100,
-                "loss": max(0.1, 2.5 - i * 0.18 + rng.uniform(-0.2, 0.2)),
-                "epsilon": max(0.01, 1.0 - i * 0.08),
-                "reward": int(-50 + i * 8 + rng.random() * 10),
-                "shots": 95.0 - i * 3.2 + rng.uniform(-1.5, 1.5),
-                "q_max": 0.8 + i * 0.42 + rng.uniform(-0.3, 0.3),
-            }
-        )
-    return out
+class SideStats:
+    def __init__(self, name, entries, fleet):
+        self.name = name
+        self.shots = entries
+        self.hits = sum(1 for e in entries if e["res"] in HIT_RESULTS)
+        self.accuracy = self.hits / len(entries) if entries else 0.0
+        self.cum = self._cumulative()
+        self.streak = self._streak()
+        self.board = {e["idx"]: e for e in entries}
+        self.fleet = self._fleet(fleet)
+        self.sunk = sum(1 for _, shot in self.fleet if shot is not None)
+        self._density = {}
+
+    def search_at(self, frame):
+        search = ["U"] * 100
+        for entry in self.shots[:frame]:
+            if entry["res"] == "S" and entry["cells"]:
+                for cell in entry["cells"]:
+                    search[cell] = "S"
+            else:
+                search[entry["idx"]] = entry["res"]
+        return search
+
+    def density_at(self, frame):
+        cached = self._density.get(frame)
+        if cached is None:
+            cached = normalized_density(self.search_at(frame))
+            self._density[frame] = cached
+        return cached
+
+    def sunk_until(self, frame):
+        return sum(1 for _, shot in self.fleet if shot is not None and shot <= frame)
+
+    def _cumulative(self):
+        out, hits = [], 0
+        for i, entry in enumerate(self.shots):
+            if entry["res"] in HIT_RESULTS:
+                hits += 1
+            out.append(hits / (i + 1))
+        return out
+
+    def _streak(self):
+        best = run = 0
+        for entry in self.shots:
+            run = run + 1 if entry["res"] in HIT_RESULTS else 0
+            best = max(best, run)
+        return best
+
+    def _fleet(self, sizes):
+        sunk_at = {}
+        for i, entry in enumerate(self.shots):
+            if entry["sunk"] is not None:
+                sunk_at[entry["sunk"]] = i + 1
+        return [(size, sunk_at.get(pos)) for pos, size in enumerate(sizes)]
 
 
-def _histogram():
-    rng = random.Random(99)
-    bins = [0] * ((HIST_MAX - HIST_MIN) // HIST_STEP)
-    for _ in range(SAMPLES):
-        value = rng.gauss(AVG_DQN, 8.5)
-        slot = int((value - HIST_MIN) // HIST_STEP)
-        bins[max(0, min(len(bins) - 1, slot))] += 1
-    return bins
+class Report:
+    def __init__(self, match):
+        names = match.side_names()
+        self.mode = match.mode
+        self.over = match.game.over
+        self.winner = match.winner() if match.game.over else None
+        self.total = len(match.log)
+        self.sides = [
+            SideStats(
+                names[side],
+                [e for e in match.log if e["side"] == side],
+                match.fleet_sizes(side),
+            )
+            for side in (0, 1)
+        ]
 
+    @property
+    def longest(self):
+        return max(len(s.shots) for s in self.sides)
 
-def _heat():
-    rng = random.Random(7)
-    search = ["U"] * 100
-    for idx in rng.sample(range(100), 22):
-        search[idx] = "M"
-    for idx in (34, 35, 44):
-        search[idx] = "H"
-    return normalized_density(search)
+    def side_of(self, name):
+        return 0 if self.sides[0].name == name else 1
 
 
 class Analysis:
     def __init__(self):
-        self.series = _series()
-        self.hist = _histogram()
-        self.heat = _heat()
-        self.view = "loss"
+        self.report = None
+        self.view = "accuracy"
         self.iso = True
         self.selected = 0
         self.hover = None
-        self.origin = None
+        self.frame = 0
+        self.playing = True
+        self.tl_side = 0
+        self._timer = 0
+
+    def load(self, match):
+        self.report = Report(match) if match.log else None
+        self.hover = None
+        self.frame = 0
+        self.playing = True
+        self._timer = 0
+
+    @property
+    def frames(self):
+        if not self.has_data:
+            return 0
+        return len(self.report.sides[self.tl_side].shots)
+
+    def tick(self, dt):
+        if not self.has_data or self.view != "timelapse" or not self.playing:
+            return
+        self._timer += dt
+        step = LOOP_PAUSE_MS if self.frame >= self.frames else FRAME_MS
+        if self._timer >= step:
+            self._timer = 0
+            self.frame = 0 if self.frame >= self.frames else self.frame + 1
+
+    def scrub(self, frame):
+        self.frame = max(0, min(self.frames, frame))
+        self.playing = False
+        self._timer = 0
+
+    def set_iso(self, iso):
+        self.iso = iso
+
+    def set_side(self, side):
+        if side != self.tl_side:
+            self.tl_side = side
+            self.frame = min(self.frame, self.frames)
+
+    @property
+    def has_data(self):
+        return self.report is not None
 
     @property
     def title(self):
-        if self.view == "heatmap":
-            return f"{TITLES[self.view]} {'[ISO]' if self.iso else '[2D]'}"
         return TITLES[self.view]
 
-    def toggle_available(self):
-        return self.view == "heatmap"
+    def has_tabs(self):
+        return self.has_data and self.view in MAP_VIEWS
 
     def button_label(self, index):
         head, sub, _ = BUTTONS[index]
-        if index == TOGGLE_BUTTON:
-            return head, "-> 2D" if self.iso else "-> ISO"
         return head, sub
 
     def button_active(self, index):
         action = BUTTONS[index][2]
         return action.startswith("view:") and action.split(":")[1] == self.view
-
-    def button_enabled(self, index):
-        return index != TOGGLE_BUTTON or self.toggle_available()
 
     def move(self, dx, dy):
         col, row = self.selected % 3, self.selected // 3
@@ -121,108 +186,221 @@ class Analysis:
         action = BUTTONS[index][2]
         if action == "exit":
             return "exit"
-        if action == "toggle:iso":
-            if self.toggle_available():
-                self.iso = not self.iso
-            return None
         view = action.split(":")[1]
         if view != self.view:
             self.view = view
             self.hover = None
+            if view == "timelapse":
+                self.frame = 0
+                self.playing = True
+                self._timer = 0
         return None
 
     def set_hover(self, target):
         self.hover = target
+        if self.view != "timelapse":
+            return
+        if target and target[0] == "frame":
+            self.scrub(target[1])
+        elif target is None:
+            self.playing = True
 
     def terminal_lines(self):
+        if not self.has_data:
+            return [
+                [(">> BRAK DANYCH", "warn")],
+                [],
+                [("Rozegraj partie, potem wroc tutaj.", "label")],
+                [("Menu: GRACZ VS AI albo AI VS AI.", "label")],
+            ]
+        if self.view == "timelapse":
+            return self._timelapse_lines()
         if self.hover is None:
             return self._summary()
-        if self.view == "heatmap":
-            return self._heat_lines(self.hover)
-        if self.view == "shots":
-            return self._hist_lines(self.hover)
-        return self._point_lines(self.hover)
+        kind = self.hover[0]
+        if kind == "shot":
+            return self._shot_lines(*self.hover[1:])
+        if kind == "ship":
+            return self._ship_lines(*self.hover[1:])
+        if kind == "cell":
+            return self._cell_lines(*self.hover[1:])
+        return self._turn_lines(self.hover[1])
 
     def _summary(self):
-        return [
-            [(">> MODEL: ", "label"), (MODEL_NAME, "val")],
-            [
-                ("EPOKI ", "label"),
-                (str(MODEL_EPOCHS), "val"),
-                ("  BUFOR ", "label"),
-                (MODEL_BUFFER, "val"),
-                ("  EPS ", "label"),
-                (f"{MODEL_EPS:.2f}", "val"),
-            ],
-            [
-                ("GAMMA ", "label"),
-                (f"{MODEL_GAMMA:.2f}", "val"),
-                ("  LR ", "label"),
-                (MODEL_LR, "val"),
-                ("  LOSS ", "label"),
-                (f"{self.series[-1]['loss']:.3f}", "val"),
-            ],
-            [],
-            [
-                ("SR. STRZALY ", "label"),
-                (f"{AVG_DQN:.1f}", "high"),
-                ("  HEUR ", "label"),
-                (f"{AVG_HEURISTIC:.1f}", "val"),
-                ("  RND ", "label"),
-                (f"{AVG_RANDOM:.1f}", "val"),
-            ],
-            [("Najedz kursorem na gorny ekran.", "label")],
-        ]
-
-    def _point_lines(self, index):
-        d = self.series[index]
-        reward_key = "high" if d["reward"] > 0 else "warn"
-        reward = f"+{d['reward']}" if d["reward"] > 0 else str(d["reward"])
-        return [
-            [(">> ANALIZA EPIZODU: ", "label"), (str(d["ep"]), "val")],
-            [("LOSS (Strata): ", "label"), (f"{d['loss']:.4f}", "val")],
-            [("EPSILON (Eksplor.): ", "label"), (f"{d['epsilon']:.2f}", "val")],
-            [("SR. NAGRODA: ", "label"), (reward, reward_key)],
-            [("SR. STRZALY: ", "label"), (f"{d['shots']:.1f}", "val")],
-            [("MAX Q: ", "label"), (f"{d['q_max']:.2f}", "val")],
-        ]
-
-    def _hist_lines(self, index):
-        low = HIST_MIN + index * HIST_STEP
-        count = self.hist[index]
-        share = 100.0 * count / SAMPLES
-        cumulative = 100.0 * sum(self.hist[: index + 1]) / SAMPLES
-        return [
-            [(">> PRZEDZIAL: ", "label"), (f"{low}-{low + HIST_STEP - 1} STRZALOW", "val")],
-            [],
-            [("PARTIE: ", "label"), (f"{count}", "val"), (f"  ({share:.1f}%)", "label")],
-            [("SKUMULOWANE: ", "label"), (f"{cumulative:.1f}%", "val")],
-            [
-                ("WZGLEDEM HEUR: ", "label"),
-                (
-                    f"{low + HIST_STEP / 2 - AVG_HEURISTIC:+.1f}",
-                    "high" if low + HIST_STEP / 2 < AVG_HEURISTIC else "warn",
-                ),
-            ],
-        ]
-
-    def _heat_lines(self, index):
-        value = self.heat[index]
-        col, row = index % 10, index // 10
-        if value >= 0.75:
-            status, key = "HOTSPOT", "warn"
-        elif value >= 0.35:
-            status, key = "WARM", "high"
+        report = self.report
+        a, b = report.sides
+        head = f"{a.name} vs {b.name}"
+        if report.over:
+            outcome = [
+                ("ZWYCIEZCA: ", "label"),
+                (report.winner, "high"),
+                (f"  ({report.total} strzalow)", "label"),
+            ]
         else:
-            status, key = "ZIMNO", "val"
+            outcome = [("PARTIA W TOKU", "warn"), (f"  ({report.total} strzalow)", "label")]
         return [
-            [(">> SEKTOR MAPY: ", "label"), (f"{'ABCDEFGHIJ'[col]}{row + 1}", "val")],
+            [(">> PARTIA: ", "label"), (head, "val")],
+            outcome,
             [],
-            [("DENSITY (Q-Value): ", "label"), (f"{value:.3f}", "val")],
-            [("KLASYFIKACJA: ", "label"), (f"[{status}]", key)],
-            [("RANKING: ", "label"), (f"{self._rank(index)} / 100", "val")],
+            [
+                (f"{a.name:<6}", "val"),
+                (" STRZ ", "label"),
+                (f"{len(a.shots):<3}", "val"),
+                (" TRAF ", "label"),
+                (f"{a.hits:<3}", "val"),
+                (" CEL ", "label"),
+                (f"{a.accuracy * 100:.1f}%", "high"),
+            ],
+            [
+                (f"{b.name:<6}", "val"),
+                (" STRZ ", "label"),
+                (f"{len(b.shots):<3}", "val"),
+                (" TRAF ", "label"),
+                (f"{b.hits:<3}", "val"),
+                (" CEL ", "label"),
+                (f"{b.accuracy * 100:.1f}%", "high"),
+            ],
+            [
+                ("SERIA ", "label"),
+                (f"{a.streak}/{b.streak}", "val"),
+                ("   FLOTA ", "label"),
+                (f"{a.sunk}/5 : {b.sunk}/5", "val"),
+            ],
         ]
 
-    def _rank(self, index):
-        better = sum(1 for v in self.heat if v > self.heat[index])
-        return better + 1
+    def _timelapse_lines(self):
+        side = self.report.sides[self.tl_side]
+        frame = min(self.frame, len(side.shots))
+        density = side.density_at(frame)
+        search = side.search_at(frame)
+        unknown = sum(1 for s in search if s == "U")
+        best = max(range(100), key=lambda i: density[i])
+        state = "PAUZA" if not self.playing else "GRA"
+
+        lines = [
+            [
+                (">> KLATKA: ", "label"),
+                (f"{frame}/{len(side.shots)}", "val"),
+                ("   ", "label"),
+                (side.name, "high"),
+                (f"   [{state}]", "label"),
+            ],
+            [],
+        ]
+        if frame == 0:
+            lines.append([("START: ", "label"), ("plansza nieodkryta", "val")])
+        else:
+            entry = side.shots[frame - 1]
+            lines.append(
+                [
+                    ("STRZAL: ", "label"),
+                    (_coord(entry["idx"]), "val"),
+                    ("  ", "label"),
+                    (_result_name(entry["res"]), _result_key(entry["res"])),
+                ]
+            )
+        lines.append(
+            [
+                ("NIEZNANE: ", "label"),
+                (f"{unknown}", "val"),
+                ("   ZATOPIL: ", "label"),
+                (f"{side.sunk_until(frame)}/5", "val"),
+            ]
+        )
+        lines.append(
+            [
+                ("NAJGORETSZE: ", "label"),
+                (_coord(best), "warn"),
+                (f"  ({density[best]:.2f})", "label"),
+            ]
+        )
+        lines.append([("Najedz na os czasu aby przewijac.", "label")])
+        return lines
+
+    def _turn_lines(self, index):
+        lines = [[(">> STRZAL NR: ", "label"), (str(index + 1), "val")], []]
+        for side in self.report.sides:
+            if index < len(side.cum):
+                entry = side.shots[index]
+                lines.append(
+                    [
+                        (f"{side.name:<6} ", "label"),
+                        (f"{side.cum[index] * 100:5.1f}%", "val"),
+                        ("  " + _result_name(entry["res"]), _result_key(entry["res"])),
+                    ]
+                )
+            else:
+                lines.append([(f"{side.name:<6} ", "label"), ("koniec gry", "label")])
+        return lines
+
+    def _shot_lines(self, side_index, shot_index):
+        side = self.report.sides[side_index]
+        entry = side.shots[shot_index]
+        lines = [
+            [(">> ", "label"), (side.name, "val"), (f", strzal {shot_index + 1}", "label")],
+            [],
+            [("POLE: ", "label"), (_coord(entry["idx"]), "val")],
+            [("WYNIK: ", "label"), (_result_name(entry["res"]), _result_key(entry["res"]))],
+            [("CELNOSC PO: ", "label"), (f"{side.cum[shot_index] * 100:.1f}%", "val")],
+        ]
+        if entry["sunk_size"] is not None:
+            lines.append([("ZATOPIL STATEK: ", "label"), (f"{entry['sunk_size']} pol", "high")])
+        return lines
+
+    def _ship_lines(self, side_index, ship_index):
+        side = self.report.sides[side_index]
+        size, shot = side.fleet[ship_index]
+        if shot is None:
+            return [
+                [(">> STATEK: ", "label"), (f"{size} pol", "val")],
+                [],
+                [("STATUS: ", "label"), ("NIEZATOPIONY", "warn")],
+                [(f"Flota {side.name}: ", "label"), (f"{side.sunk}/5", "val")],
+            ]
+        order = sorted(s for _, s in side.fleet if s is not None).index(shot) + 1
+        return [
+            [(">> STATEK: ", "label"), (f"{size} pol", "val")],
+            [],
+            [("ZATOPIONY PRZY: ", "label"), (f"{shot} strzale", "val")],
+            [("KOLEJNOSC: ", "label"), (f"{order} z {side.sunk}", "val")],
+            [("STRZELAL: ", "label"), (side.name, "high")],
+        ]
+
+    def _cell_lines(self, side_index, index):
+        side = self.report.sides[side_index]
+        entry = side.board.get(index)
+        head = [(">> SEKTOR: ", "label"), (_coord(index), "val")]
+        if entry is None:
+            return [
+                head,
+                [],
+                [("STATUS: ", "label"), ("NIEOSTRZELANE", "label")],
+                [(f"Plansza: {side.name}", "label")],
+            ]
+        return [
+            head,
+            [],
+            [("STRZELAL: ", "label"), (side.name, "val")],
+            [("STRZAL NR: ", "label"), (str(side.shots.index(entry) + 1), "val")],
+            [("WYNIK: ", "label"), (_result_name(entry["res"]), _result_key(entry["res"]))],
+        ]
+
+
+def _coord(index):
+    return f"{'ABCDEFGHIJ'[index % 10]}{index // 10 + 1}"
+
+
+def _result_name(res):
+    if res == "M":
+        return "PUDLO"
+    if res == "S":
+        return "ZATOPIONY"
+    return "TRAFIENIE"
+
+
+def _result_key(res):
+    if res == "M":
+        return "label"
+    if res == "S":
+        return "high"
+    return "warn"

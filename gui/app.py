@@ -2,7 +2,7 @@ import pygame
 
 from . import analysis_view, board_view, menu_view, panel_view
 from .analysis import Analysis
-from .match import Match
+from .match import MODE_AIVAI, MODE_PVAI, Match
 from .menu import Menu
 from .panel_view import ATTACKS, ATTACK_RECTS
 from .theme import AI_ORIGIN, BEZEL, BEZEL_EDGE, BG, BG_STRIPE, SCREEN_H, SCREEN_W
@@ -76,7 +76,7 @@ class App:
 
     def open_analysis(self):
         self.analysis_return = self.scene
-        self.analysis.set_hover(None)
+        self.analysis.load(self.match)
         self.scene = ANALYSIS
 
     def _close_analysis(self):
@@ -93,6 +93,11 @@ class App:
             self.analysis.move(0, -1)
         elif key in (pygame.K_DOWN, pygame.K_s):
             self.analysis.move(0, 1)
+        elif key == pygame.K_v:
+            if self.analysis.has_tabs():
+                self.analysis.set_iso(not self.analysis.iso)
+        elif key == pygame.K_p:
+            self.analysis.playing = not self.analysis.playing
         elif key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_k):
             if self.analysis.activate() == "exit":
                 self._close_analysis()
@@ -100,7 +105,8 @@ class App:
     def _analysis_hover(self, pos):
         if self.layout.top_rect.collidepoint(pos):
             local = self.layout.local(pos, self.layout.top_rect)
-            self.analysis.set_hover(analysis_view.hit_test_view(self.analysis, local))
+            if analysis_view.hit_test_tabs(self.analysis, local) is None:
+                self.analysis.set_hover(analysis_view.hit_test_view(self.analysis, local))
         elif self.layout.bot_rect.collidepoint(pos):
             local = self.layout.local(pos, self.layout.bot_rect)
             index = analysis_view.hit_test_buttons(local)
@@ -108,6 +114,16 @@ class App:
                 self.analysis.selected = index
 
     def _analysis_click(self, pos):
+        if self.layout.top_rect.collidepoint(pos):
+            local = self.layout.local(pos, self.layout.top_rect)
+            action = analysis_view.hit_test_tabs(self.analysis, local)
+            if action is None:
+                return
+            if action[0] == "iso":
+                self.analysis.set_iso(action[1])
+            else:
+                self.analysis.set_side(action[1])
+            return
         if not self.layout.bot_rect.collidepoint(pos):
             return
         local = self.layout.local(pos, self.layout.bot_rect)
@@ -150,7 +166,10 @@ class App:
         if action == "quit":
             self.running = False
         elif action == "play":
-            self.match.reset()
+            self.match.reset(MODE_PVAI)
+            self.scene = GAME
+        elif action == "ai_vs_ai":
+            self.match.reset(MODE_AIVAI)
             self.scene = GAME
 
     def _game_key(self, key):
@@ -225,6 +244,8 @@ class App:
                 self.handle_event(event)
             if self.scene == GAME:
                 self.match.tick(dt)
+            elif self.scene == ANALYSIS:
+                self.analysis.tick(dt)
             self.draw()
             pygame.display.flip()
         pygame.quit()
