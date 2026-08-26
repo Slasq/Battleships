@@ -1,9 +1,10 @@
 import pygame
 
-from . import analysis_view, board_view, menu_view, panel_view
+from . import analysis_view, board_view, menu_view, model_select_view, panel_view
 from .analysis import Analysis
 from .match import MODE_AIVAI, MODE_PVAI, Match
 from .menu import Menu
+from .model_select import MODE_DUEL, MODE_SINGLE, ModelSelect
 from .panel_view import ATTACKS, ATTACK_RECTS
 from .theme import AI_ORIGIN, BEZEL, BEZEL_EDGE, BG, BG_STRIPE, SCREEN_H, SCREEN_W
 from .window import Layout
@@ -13,6 +14,7 @@ FPS = 60
 MENU = "menu"
 GAME = "game"
 ANALYSIS = "analysis"
+SELECT = "select"
 
 
 class App:
@@ -31,6 +33,7 @@ class App:
         self.menu = Menu()
         self.match = Match()
         self.analysis = Analysis()
+        self.model_select = ModelSelect()
         self.scene = MENU
         self.analysis_return = MENU
         self.pressed_atk = None
@@ -57,6 +60,8 @@ class App:
                 self._menu_key(event.key)
             elif self.scene == ANALYSIS:
                 self._analysis_key(event.key)
+            elif self.scene == SELECT:
+                self._select_key(event.key)
             else:
                 self._game_key(event.key)
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -64,6 +69,8 @@ class App:
                 self._menu_click(event.pos)
             elif self.scene == ANALYSIS:
                 self._analysis_click(event.pos)
+            elif self.scene == SELECT:
+                self._select_click(event.pos)
             else:
                 self._game_click(event.pos)
         elif event.type == pygame.MOUSEMOTION:
@@ -71,6 +78,8 @@ class App:
                 self._menu_hover(event.pos)
             elif self.scene == ANALYSIS:
                 self._analysis_hover(event.pos)
+            elif self.scene == SELECT:
+                self._select_hover(event.pos)
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             self.pressed_atk = None
 
@@ -134,6 +143,55 @@ class App:
         if self.analysis.activate(index) == "exit":
             self._close_analysis()
 
+    def _select_key(self, key):
+        state = self.model_select
+        if key == pygame.K_ESCAPE:
+            self._select_action("back")
+        elif key in (pygame.K_UP, pygame.K_w):
+            state.move(-1)
+        elif key in (pygame.K_DOWN, pygame.K_s):
+            state.move(1)
+        elif key in (pygame.K_LEFT, pygame.K_a):
+            state.focus_button(0)
+        elif key in (pygame.K_RIGHT, pygame.K_d):
+            state.focus_button(1)
+        elif key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_k):
+            self._select_action(state.activate())
+
+    def _select_action(self, action):
+        if action == "back":
+            if self.model_select.back() == "menu":
+                self.scene = MENU
+        elif action == "pick" and self.model_select.confirm() == "start":
+            mode = MODE_PVAI if self.model_select.mode == MODE_SINGLE else MODE_AIVAI
+            self.match.reset(mode)
+            self.scene = GAME
+
+    def _select_hover(self, pos):
+        if not self.layout.bot_rect.collidepoint(pos):
+            return
+        local = self.layout.local(pos, self.layout.bot_rect)
+        index = model_select_view.hit_test_items(local)
+        if index is not None:
+            self.model_select.select(index)
+            return
+        index = model_select_view.hit_test_buttons(local)
+        if index is not None:
+            self.model_select.focus_button(index)
+
+    def _select_click(self, pos):
+        if not self.layout.bot_rect.collidepoint(pos):
+            return
+        local = self.layout.local(pos, self.layout.bot_rect)
+        index = model_select_view.hit_test_items(local)
+        if index is not None:
+            self.model_select.select(index)
+            return
+        index = model_select_view.hit_test_buttons(local)
+        if index is not None:
+            self.model_select.focus_button(index)
+            self._select_action(self.model_select.activate(index))
+
     def _menu_key(self, key):
         if key == pygame.K_ESCAPE:
             self.running = False
@@ -166,11 +224,11 @@ class App:
         if action == "quit":
             self.running = False
         elif action == "play":
-            self.match.reset(MODE_PVAI)
-            self.scene = GAME
+            self.model_select.begin(MODE_SINGLE)
+            self.scene = SELECT
         elif action == "ai_vs_ai":
-            self.match.reset(MODE_AIVAI)
-            self.scene = GAME
+            self.model_select.begin(MODE_DUEL)
+            self.scene = SELECT
 
     def _game_key(self, key):
         match = self.match
@@ -225,6 +283,9 @@ class App:
         elif self.scene == ANALYSIS:
             analysis_view.render_top(self.top_surf, self.analysis)
             analysis_view.render_bottom(self.bot_surf, self.analysis)
+        elif self.scene == SELECT:
+            model_select_view.render_top(self.top_surf, self.model_select)
+            model_select_view.render_bottom(self.bot_surf, self.model_select)
         else:
             board_view.render(self.top_surf, self.match)
             panel_view.render(self.bot_surf, self.match, self.pressed_atk)
