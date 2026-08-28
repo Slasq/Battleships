@@ -2,6 +2,7 @@ import os
 
 import pygame
 
+from .settings import SETTINGS
 from .theme import (
     BEZEL_PAD_UNIT,
     MARGIN_H,
@@ -33,21 +34,34 @@ def fit_scale():
                 return value
         except ValueError:
             pass
+    choice = SETTINGS.value("scale")
+    if choice:
+        return float(choice)
     dw, dh = desktop_size()
     by_w = dw * MARGIN_W / UNIT_W
     by_h = dh * MARGIN_H / UNIT_H
     return max(MIN_SCALE, min(by_w, by_h, MAX_SCALE))
 
 
+def screen_metrics(scale):
+    return (
+        round(SCREEN_W * scale),
+        round(SCREEN_H * scale),
+        round(BEZEL_PAD_UNIT * scale),
+        round(SCREEN_GAP_UNIT * scale),
+    )
+
+
+def window_size(scale):
+    sw, sh, pad, gap = screen_metrics(scale)
+    return sw + pad * 2, sh * 2 + gap + pad * 2
+
+
 class Layout:
     def __init__(self):
         self.scale = fit_scale()
-        sw = round(SCREEN_W * self.scale)
-        sh = round(SCREEN_H * self.scale)
-        pad = round(BEZEL_PAD_UNIT * self.scale)
-        gap = round(SCREEN_GAP_UNIT * self.scale)
-        self.win_w = sw + pad * 2
-        self.win_h = sh * 2 + gap + pad * 2
+        sw, sh, pad, gap = screen_metrics(self.scale)
+        self.win_w, self.win_h = window_size(self.scale)
         self.top_rect = pygame.Rect(pad, pad, sw, sh)
         self.bot_rect = pygame.Rect(pad, pad + sh + gap, sw, sh)
         self.top_bezel = self.top_rect.inflate(pad, pad)

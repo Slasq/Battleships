@@ -3,6 +3,7 @@ import pygame
 from .draw import tracked_text
 from .fonts import SM, font
 from .menu import ITEMS, READY
+from .settings import anim_ticks
 from .sprites import frame, scaled, tile
 from .theme import (
     BADGE_BG,
@@ -195,7 +196,7 @@ def _ship(surf, ticks):
 
 
 def render_top(surf):
-    ticks = pygame.time.get_ticks()
+    ticks = anim_ticks()
     surf.blit(_sky_surface(), (0, 0))
     _clouds(surf, ticks)
     _water(surf, ticks)

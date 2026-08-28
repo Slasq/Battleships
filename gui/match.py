@@ -4,6 +4,7 @@ import agent
 from engine import Game
 
 from .heatmap import HEAT_LIFT, normalized_density
+from .settings import SETTINGS, scaled_ms
 from .theme import COLS
 
 LIFT = {"water": 0, "ship": 2, "hit": 4, "miss": 1}
@@ -45,7 +46,7 @@ class Match:
         self.log = []
         self.cursor = 44
         self.predicted = None
-        self.show_heat = False
+        self.show_heat = SETTINGS.value("heatmap")
         self._heat_key = None
         self._heat = None
         self.paused = False
@@ -164,7 +165,7 @@ class Match:
         if self.game.over:
             return
         if not self.game.player1_turn:
-            self.ai_delay = AI_DELAY_MS
+            self.ai_delay = scaled_ms(AI_DELAY_MS)
 
     def _announce(self, who, move_name, index, result):
         line1 = f"{who} uzywa {move_name}!"
@@ -246,7 +247,7 @@ class Match:
         if self.auto_left <= 0 and not self.game.over:
             self.dialog = ["Trening zakonczony.", f"Twoja tura, {self.side_names()[0]}."]
             if not self.game.player1_turn:
-                self.ai_delay = 400
+                self.ai_delay = scaled_ms(400)
 
     def _tick_ai(self, dt):
         if self.mode == MODE_AIVAI:
@@ -264,7 +265,7 @@ class Match:
         result = self._apply(idx)
         self._announce(self.side_names()[1], "Q-PREDICT", idx, result)
         if not self.game.over and not self.game.player1_turn:
-            self.ai_delay = AI_CHAIN_MS
+            self.ai_delay = scaled_ms(AI_CHAIN_MS)
         else:
             self.ai_delay = 0
 
@@ -281,4 +282,4 @@ class Match:
             self.shot_anim_idx = idx
             self.shot_anim_until = pygame.time.get_ticks() + SHOT_ANIM_MS
         self._announce(self.side_names()[side], "Q-PREDICT", idx, result)
-        self.ai_delay = AI_STEP_MS
+        self.ai_delay = scaled_ms(AI_STEP_MS)

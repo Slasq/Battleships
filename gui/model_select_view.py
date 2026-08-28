@@ -5,6 +5,7 @@ import pygame
 from .draw import lerp, wrap_text
 from .fonts import SM, font
 from .model_select import BUTTONS, DARK_TEXT, MAX_RANK, MODELS
+from .settings import anim_ticks
 from .sprites import frame, sprite
 from .theme import (
     HUD_BG,
@@ -264,7 +265,7 @@ def _info(surf, state):
 
 def render_top(surf, state):
     surf.blit(_sky_surface(), (0, 0))
-    _avatar(surf, state.current(), pygame.time.get_ticks())
+    _avatar(surf, state.current(), anim_ticks())
     _info(surf, state)
 
 

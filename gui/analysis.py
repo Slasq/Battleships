@@ -1,4 +1,5 @@
 from .heatmap import normalized_density
+from .settings import SETTINGS
 
 VIEWS = ["accuracy", "timeline", "fleet", "map", "timelapse"]
 
@@ -112,7 +113,7 @@ class Analysis:
     def __init__(self):
         self.report = None
         self.view = "accuracy"
-        self.iso = True
+        self.iso = SETTINGS.value("iso")
         self.selected = 0
         self.hover = None
         self.frame = 0
@@ -122,6 +123,7 @@ class Analysis:
 
     def load(self, match):
         self.report = Report(match) if match.log else None
+        self.iso = SETTINGS.value("iso")
         self.hover = None
         self.frame = 0
         self.playing = True
