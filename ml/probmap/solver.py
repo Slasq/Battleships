@@ -13,6 +13,10 @@ HIT_WEIGHT = 10.0
 # Pola zablokowane
 BLOCKED = ("M", "S")
 
+# Ufnosc dla ludzkiej imitacji
+# 0 wylaczone 1 naiwny prog wag 
+PRIOR_STRENGTH = 1.0
+
 
 # Wszystkie rozstawienia statku danej dlugosci na pustej planszy
 @lru_cache(maxsize=None)
@@ -77,7 +81,8 @@ def remaining_sizes(search, fleet=DEFAULT_FLEET, board_size=BOARD_SIZE):
     return remaining
 
 # Mapa wag dla starkows
-def probability_map(search, sizes=None, fleet=DEFAULT_FLEET, hit_weight=HIT_WEIGHT):
+def probability_map(search, sizes=None, fleet=DEFAULT_FLEET, hit_weight=HIT_WEIGHT,
+                    bias=None, prior_strength=PRIOR_STRENGTH):
     board_size = int(round(len(search) ** 0.5))
 
     if sizes is None:
@@ -103,6 +108,14 @@ def probability_map(search, sizes=None, fleet=DEFAULT_FLEET, hit_weight=HIT_WEIG
 
             # Waga rozkaladane na pola nietrafione
             weight = hit_weight ** hits
+
+            # Imitacja ludzkich ruchów
+            if bias is not None:
+                prior = 1.0
+                for i in placement:
+                    prior *= bias[i]
+                weight *= prior ** prior_strength
+
             for i in placement:
                 if search[i] == "U":
                     weights[i] += weight
@@ -115,8 +128,9 @@ def probability_map(search, sizes=None, fleet=DEFAULT_FLEET, hit_weight=HIT_WEIG
 
 
 # Pole o najwyzszej szansie lub None gdy nie ma gdzie strzelac
-def best_move(search, sizes=None, fleet=DEFAULT_FLEET, hit_weight=HIT_WEIGHT, rng=None):
-    probs = probability_map(search, sizes, fleet, hit_weight)
+def best_move(search, sizes=None, fleet=DEFAULT_FLEET, hit_weight=HIT_WEIGHT, rng=None,
+              bias=None, prior_strength=PRIOR_STRENGTH):
+    probs = probability_map(search, sizes, fleet, hit_weight, bias, prior_strength)
 
     best = max(probs)
     if best == 0.0:
