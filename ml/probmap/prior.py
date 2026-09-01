@@ -2,6 +2,8 @@ import csv
 import json
 import os
 
+import random
+
 from ml.probmap.solver import BOARD_SIZE, CELLS, DEFAULT_FLEET, placements
 
 # Dane z cliambrown/battleship-data
@@ -75,6 +77,47 @@ def load_bias(path=PRIOR_JSON):
 
     with open(path) as handle:
         return json.load(handle)["bias"]
+
+
+# Losowa flota wazona priorem
+# Statki ida po kolei, a kolidujace rozstawienia sa odrzucane,
+# wiec to przyblizenie rozkladu ludzkiego a nie dokladne losowanie
+def sample_board(bias=None, fleet=DEFAULT_FLEET, board_size=BOARD_SIZE, rng=None,
+                 strength=1.0):
+    if bias is None:
+        bias = load_bias()
+    if rng is None:
+        rng = random
+
+    taken = set()
+    ships = []
+
+    for size in fleet:
+        options = []
+        weights = []
+
+        for placement in placements(size, board_size):
+            if taken.intersection(placement):
+                continue
+
+            weight = 1.0
+            for i in placement:
+                weight *= bias[i]
+
+            options.append(placement)
+            weights.append(weight ** strength)
+
+        placement = rng.choices(options, weights=weights, k=1)[0]
+        ships.append(placement)
+        taken.update(placement)
+
+    return ships
+
+
+# To samo ale jednostajnie, tak jak losuje engine
+def sample_uniform_board(fleet=DEFAULT_FLEET, board_size=BOARD_SIZE, rng=None):
+    flat = [1.0] * (board_size * board_size)
+    return sample_board(flat, fleet, board_size, rng)
 
 
 if __name__ == "__main__":
