@@ -1,3 +1,5 @@
+# Old gui for fast testing 
+
 import pygame
 from engine import player, Game
 
