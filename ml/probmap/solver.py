@@ -5,9 +5,7 @@ BOARD_SIZE = 10
 CELLS = BOARD_SIZE * BOARD_SIZE
 DEFAULT_FLEET = (5, 4, 3, 3, 2)
 
-# Ile razy mocniej wazy rozstawienie za kazde pokryte trafienie.
-# Duza wartosc sprawia, ze przy odkrytym trafieniu solver sam przechodzi
-# w tryb dobijania, bez osobnej galezi hunt/target.
+# Ile razy mocniej wazy rozstawienie za kazde pokryte trafienie
 HIT_WEIGHT = 10.0
 
 # Pola zablokowane

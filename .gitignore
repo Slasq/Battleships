@@ -221,3 +221,6 @@ models/*.pth
 
 # Data
 *.csv
+
+# Ustawienia GUI
+settings.json

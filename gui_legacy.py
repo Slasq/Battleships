@@ -11,7 +11,7 @@ pygame.font.init()
 font = pygame.font.SysFont("Arial", 36)
 
 # Grid
-# Uklad liczony w kratkach
+# Uklad liczony w kratkaaaach
 COLS = 1 + 10 + 2 + 10 + 1
 ROWS = 1 + 10 + 1 + 10 + 1
 
