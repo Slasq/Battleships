@@ -1,7 +1,7 @@
 import pygame
 
-import heuristics as agent
 from engine import Game
+from ml import policies as pol
 
 from .heatmap import HEAT_LIFT, normalized_density
 from .settings import SETTINGS, scaled_ms
@@ -40,8 +40,9 @@ class Match:
     def __init__(self):
         self.reset()
 
-    def reset(self, mode=MODE_PVAI):
+    def reset(self, mode=MODE_PVAI, picked=None):
         self.mode = mode
+        self._set_policies(mode, picked)
         self.game = Game(mode == MODE_PVAI, False)
         self.log = []
         self.cursor = 44
@@ -60,6 +61,29 @@ class Match:
             self.dialog = ["Pojedynek agentow!", "AI-1 kontra AI-2."]
         else:
             self.dialog = ["Gra rozpoczeta!", "Wybierz atak na dolnym ekranie."]
+
+    def _set_policies(self, mode, picked):
+        if picked is None:
+            picked = getattr(self, "_picked", None)
+        picked = list(picked or [])
+        self._picked = picked
+
+        domyslny = (pol.get(pol.PROBMAP), "PROB_MAP")
+        wybrane = [(pol.get(m["policy"]), m["name"]) for m in picked]
+        strony = [0, 1] if mode == MODE_AIVAI else [1]
+
+        self.policies = {}
+        self.model_names = {}
+        for pos, side in enumerate(strony):
+            fn, name = wybrane[pos] if pos < len(wybrane) else domyslny
+            self.policies[side] = fn
+            self.model_names[side] = name
+
+    def policy_for(self, side):
+        return self.policies.get(side, pol.get(pol.PROBMAP))
+
+    def model_name(self, side):
+        return self.model_names.get(side, "PROB_MAP")
 
     @property
     def over(self):
@@ -193,7 +217,7 @@ class Match:
         if self.game.over or not self.game.player1_turn:
             self.dialog = ["Heatmapa wlaczona."]
             return
-        idx = agent.pick_move(self.game.player1.search)
+        idx = pol.get(pol.PROBMAP)(self.game.player1.search)
         if idx is None:
             self.dialog = ["Heatmapa wlaczona."]
             return
@@ -218,7 +242,7 @@ class Match:
         self.epsilon = min(1.0, self.epsilon + 0.05)
         if self.game.over or not self.game.player1_turn:
             return
-        idx = agent.pick_random(self.game.player1.search)
+        idx = pol.get(pol.RANDOM)(self.game.player1.search)
         if idx is None:
             return
         self.cursor = idx
@@ -236,11 +260,12 @@ class Match:
         for _ in range(TRAIN_PER_FRAME):
             if self.auto_left <= 0 or self.game.over:
                 break
-            idx = agent.pick_move(self.current_search())
+            side = 0 if self.game.player1_turn else 1
+            idx = self.policy_for(side)(self.current_search())
             if idx is None:
                 self.auto_left = 0
                 break
-            who = self.side_names()[0 if self.game.player1_turn else 1]
+            who = self.side_names()[side]
             result = self._apply(idx)
             self._announce(who, "TRAIN", idx, result)
             self.auto_left -= 1
@@ -259,11 +284,11 @@ class Match:
         if self.ai_delay > 0:
             return
         self.ai_delay = 0
-        idx = agent.pick_move(self.game.player2.search)
+        idx = self.policy_for(1)(self.game.player2.search)
         if idx is None:
             return
         result = self._apply(idx)
-        self._announce(self.side_names()[1], "Q-PREDICT", idx, result)
+        self._announce(self.side_names()[1], self.model_name(1), idx, result)
         if not self.game.over and not self.game.player1_turn:
             self.ai_delay = scaled_ms(AI_CHAIN_MS)
         else:
@@ -273,13 +298,13 @@ class Match:
         self.ai_delay -= dt
         if self.ai_delay > 0:
             return
-        idx = agent.pick_move(self.current_search())
+        side = 0 if self.game.player1_turn else 1
+        idx = self.policy_for(side)(self.current_search())
         if idx is None:
             return
-        side = 0 if self.game.player1_turn else 1
         result = self._apply(idx)
         if side == 0:
             self.shot_anim_idx = idx
             self.shot_anim_until = pygame.time.get_ticks() + SHOT_ANIM_MS
-        self._announce(self.side_names()[side], "Q-PREDICT", idx, result)
+        self._announce(self.side_names()[side], self.model_name(side), idx, result)
         self.ai_delay = scaled_ms(AI_STEP_MS)

@@ -7,9 +7,13 @@ from .theme import (
     PAPER,
 )
 
+from ml import policies
+
 MODELS = [
+
     {
         "name": "BASIC_AI",
+        "policy": policies.BASIC,
         "epochs": "N/A",
         "winrate": "15.0%",
         "eps": "0.00",
@@ -23,6 +27,7 @@ MODELS = [
     },
     {
         "name": "PROB_MAP",
+        "policy": policies.PROBMAP,
         "epochs": "N/A",
         "winrate": "45.3%",
         "eps": "0.00",
@@ -36,6 +41,7 @@ MODELS = [
     },
     {
         "name": "DQN_CORE",
+        "policy": policies.DQN,
         "epochs": "5000",
         "winrate": "58.7%",
         "eps": "0.05",
@@ -48,17 +54,19 @@ MODELS = [
         "diff": "TRUDNY",
     },
     {
-        "name": "DQN_EPIC",
-        "epochs": "25000",
-        "winrate": "82.1%",
-        "eps": "0.01",
-        "desc": "Potwor taktyczny. Przewiduje ruchy.",
+        "name": "COMING_SOON",
+        "policy": policies.PROBMAP,
+        "locked": True,
+        "epochs": "N/A",
+        "winrate": "0.0%",
+        "eps": "0.00",
+        "desc": "Slot na kolejny model. Wkrotce.",
         "sprite": "model_dqn_epic.png",
         "scale": 4,
         "rank": 4,
-        "color": MODEL_RED,
+        "color": MODEL_GRAY,
         "anim": "kraken",
-        "diff": "EKSPERT",
+        "diff": "???",
     },
 ]
 
@@ -101,12 +109,19 @@ class ModelSelect:
         return self.step + 1 >= STEPS[self.mode]
 
     def confirm_label(self):
+        if self.locked():
+            return "WKROTCE"
         return "START" if self.last_step() else "DALEJ"
 
     def picked(self):
         return [MODELS[i] for i in self.picks]
 
+    def locked(self):
+        return bool(self.current().get("locked"))
+
     def confirm(self):
+        if self.locked():
+            return "locked"
         self.picks.append(self.selected)
         if len(self.picks) < STEPS[self.mode]:
             self.step += 1

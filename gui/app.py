@@ -179,7 +179,7 @@ class App:
                 self.scene = MENU
         elif action == "pick" and self.model_select.confirm() == "start":
             mode = MODE_PVAI if self.model_select.mode == MODE_SINGLE else MODE_AIVAI
-            self.match.reset(mode)
+            self.match.reset(mode, self.model_select.picked())
             self.scene = GAME
 
     def _select_hover(self, pos):
