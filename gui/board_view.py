@@ -70,11 +70,11 @@ def hp_color(ratio):
     return HP_RED
 
 
-def hit_test(match, local, origin):
+def hit_test(match, local, origin, enemy=True):
     lx, ly = local
     for i in range(100):
-        kind = match.cell_enemy(i)
-        lift = match.cell_lift(i, kind, True)
+        kind = match.cell_enemy(i) if enemy else match.cell_own(i)
+        lift = match.cell_lift(i, kind, enemy)
         cx, cy = iso_center(i % 10, i // 10, origin)
         if point_in_diamond(lx, ly, cx, cy - lift):
             return i

@@ -1,6 +1,6 @@
 import pygame
 
-from engine import Game
+from engine import FLEET, Game, Ship
 from ml import policies as pol
 
 from .heatmap import HEAT_LIFT, normalized_density
@@ -43,7 +43,9 @@ class Match:
     def reset(self, mode=MODE_PVAI, picked=None):
         self.mode = mode
         self._set_policies(mode, picked)
-        self.game = Game(mode == MODE_PVAI, False)
+        self.game = self._new_game(mode)
+        self.phase = "battle" if mode == MODE_AIVAI else "place"
+        self.place_orientation = "h"
         self.log = []
         self.cursor = 44
         self.predicted = None
@@ -60,7 +62,57 @@ class Match:
         if mode == MODE_AIVAI:
             self.dialog = ["Pojedynek agentow!", "AI-1 kontra AI-2."]
         else:
-            self.dialog = ["Gra rozpoczeta!", "Wybierz atak na dolnym ekranie."]
+            self.dialog = ["Rozstaw flote na swojej planszy.",
+                           f"Zacznij od dlugosci {FLEET[0]}. [R] obrot."]
+
+    def _new_game(self, mode):
+        floty = {side: pol.placer(name)() for side, name in self.placers.items()}
+        if mode == MODE_AIVAI:
+            return Game(False, False, ships1=floty.get(0), ships2=floty.get(1))
+        return Game(True, False, ships1=[], ships2=floty.get(1))
+
+    def placing_size(self):
+        postawione = len(self.game.player1.ships)
+        return FLEET[postawione] if postawione < len(FLEET) else None
+
+    def placing_done(self):
+        return len(self.game.player1.ships) >= len(FLEET)
+
+    def place_at(self, index):
+        size = self.placing_size()
+        if self.phase != "place" or size is None:
+            return False
+
+        ship = Ship(size, row=index // 10, col=index % 10,
+                    orientation=self.place_orientation)
+        if not self.game.player1.add_ship(ship):
+            self.dialog = ["Tu sie nie miesci.", "Wybierz inne pole."]
+            return False
+
+        if self.placing_done():
+            self.phase = "battle"
+            self.dialog = ["Flota gotowa!", "Twoj ruch, strzelaj."]
+        else:
+            self.dialog = [f"Statek {size} postawiony.",
+                           f"Teraz dlugosc {self.placing_size()}."]
+        return True
+
+    def rotate_placing(self):
+        self.place_orientation = "v" if self.place_orientation == "h" else "h"
+        self.dialog = ["Obrot statku.",
+                       "Poziomo." if self.place_orientation == "h" else "Pionowo."]
+
+    def undo_place(self):
+        if self.game.player1.remove_last_ship():
+            self.phase = "place"
+            self.dialog = ["Cofnieto statek.", f"Teraz dlugosc {self.placing_size()}."]
+
+    def fill_random(self):
+        if self.phase != "place":
+            return
+        self.game.player1.place_ships(FLEET[len(self.game.player1.ships):])
+        self.phase = "battle"
+        self.dialog = ["Flota rozstawiona losowo.", "Twoj ruch, strzelaj."]
 
     def _set_policies(self, mode, picked):
         if picked is None:
@@ -74,10 +126,13 @@ class Match:
 
         self.policies = {}
         self.model_names = {}
+        self.placers = {}
         for pos, side in enumerate(strony):
             fn, name = wybrane[pos] if pos < len(wybrane) else domyslny
             self.policies[side] = fn
             self.model_names[side] = name
+            model = picked[pos] if pos < len(picked) else {}
+            self.placers[side] = model.get("placer", pol.UNIFORM)
 
     def policy_for(self, side):
         return self.policies.get(side, pol.get(pol.PROBMAP))
@@ -169,6 +224,9 @@ class Match:
         self.cursor = row * 10 + col
 
     def fire(self, index, move_name):
+        if self.phase == "place":
+            self.dialog = ["Najpierw rozstaw flote.", "Klikaj na swojej planszy."]
+            return
         if self.mode == MODE_AIVAI:
             self.dialog = ["Tryb AI vs AI.", "Agenci graja sami."]
             return
@@ -249,6 +307,8 @@ class Match:
         self.fire(idx, "EPSILON++")
 
     def tick(self, dt):
+        if self.phase == "place":
+            return
         if self.paused or self.game.over:
             return
         if self.auto_left > 0:

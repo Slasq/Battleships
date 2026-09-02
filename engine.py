@@ -1,80 +1,118 @@
 import random
 import heuristics
 
+BOARD = 10
+CELLS = BOARD * BOARD
+FLEET = [5, 4, 3, 3, 2]
+
+
 class Ship:
-    def __init__(self, size, rng=None):
-        # Powtarzalna flota
-        if rng is None:
-            rng = random
-
+    def __init__(self, size, rng=None, row=None, col=None, orientation=None):
         self.size = size
-        self.orientation = rng.choice(["h", "v"])
 
-        # Losowanie pozycji startowej tak aby była na planszy
-        if self.orientation == "h":
-            self.row = rng.randrange(0, 10)
-            self.col = rng.randrange(0, 10 - self.size + 1)
-        else:  # "v"
-            self.row = rng.randrange(0, 10 - self.size + 1)
-            self.col = rng.randrange(0, 10)
+        # Podane wspolrzedne wygrywaja inaczej losowanie
+        if orientation is None:
+            # Powtarzalna flota
+            if rng is None:
+                rng = random
+
+            self.orientation = rng.choice(["h", "v"])
+
+            # Losowanie pozycji startowej
+            if self.orientation == "h":
+                self.row = rng.randrange(0, BOARD)
+                self.col = rng.randrange(0, BOARD - self.size + 1)
+            else:  # "v"
+                self.row = rng.randrange(0, BOARD - self.size + 1)
+                self.col = rng.randrange(0, BOARD)
+        else:
+            self.orientation = orientation
+            self.row = row
+            self.col = col
+
         self.indexes = self.get_indexes()
 
     def get_indexes(self):
-        start_index = self.row * 10 + self.col
+        start_index = self.row * BOARD + self.col
 
         if self.orientation == "h":
             return [start_index + i for i in range(self.size)]
-        
+
         elif self.orientation == "v":
-            return [start_index + i * 10 for i in range(self.size)]
+            return [start_index + i * BOARD for i in range(self.size)]
+
+
+# Statek odtworzony z listy pol
+def ship_from_cells(cells):
+    cells = sorted(cells)
+    row = cells[0] // BOARD
+    col = cells[0] % BOARD
+    orientation = "h" if len(cells) < 2 or cells[1] - cells[0] == 1 else "v"
+    return Ship(len(cells), row=row, col=col, orientation=orientation)
+
+def fits(ship, taken):
+    if ship.row < 0 or ship.col < 0:
+        return False
+
+    for i in ship.indexes:
+        if i < 0 or i >= CELLS:
+            return False
+
+        # Statek nie moze zawinac wiersza ani kolumny
+        if ship.orientation == "h" and i // BOARD != ship.row:
+            return False
+        if ship.orientation == "v" and i % BOARD != ship.col:
+            return False
+
+        # Czy statki nachodza na siebie
+        if i in taken:
+            return False
+
+    return True
 
 
 class player:
-    def __init__(self, rng = None):
+    def __init__(self, rng = None, ships = None, auto = True):
         self.ships = []
-        self.search = ["U" for i in range(100)] # Nieznana pozycja
-        self.place_ships(sizes = [5, 4, 3, 3, 2], rng = rng)
+        self.search = ["U" for i in range(CELLS)] # Nieznana pozycja
+        self.indexes = []
+
+        # Gotowe roztawienie statkow
+        if ships is not None:
+            self.set_fleet(ships)
+        elif auto:
+            self.place_ships(sizes = list(FLEET), rng = rng)
+
+    def add_ship(self, ship):
+        if not fits(ship, set(self.indexes)):
+            return False
+
+        self.ships.append(ship)
+        self.indexes.extend(ship.indexes)
+        return True
+
+    def remove_last_ship(self):
+        if not self.ships:
+            return False
+
+        ship = self.ships.pop()
+        for i in ship.indexes:
+            self.indexes.remove(i)
+        return True
+
+    # Flota jako lista statkow albo jako listy pol
+    def set_fleet(self, ships):
+        self.ships = []
+        self.indexes = []
+
+        for item in ships:
+            self.add_ship(item if isinstance(item, Ship) else ship_from_cells(item))
 
     def place_ships(self, sizes, rng = None):
-        for size in sizes: 
+        for size in sizes:
             placed = False
             while not placed:
-                # Tworzenie nowego statku
-                ship = Ship(size, rng)
-
-                # Czy pozycja jest legalna
-                placement_legal = True
-                for i in ship.indexes:
-
-                    # Index  < 100
-                    if i >= 100:
-                            placement_legal = False
-                            break
-
-                    # Czy poza granicami
-                    new_row = i // 10
-                    new_col = i % 10
-
-                    # Dodatkowa walidacja indexów
-                    if ship.orientation == "h" and new_row != ship.row:
-                        placement_legal = False
-                        break
-                    if ship.orientation == "v" and new_col != ship.col:
-                        placement_legal = False
-                        break
-
-                    # Czy sie nakladaja
-                    for other_ship in self.ships:
-                        if i in other_ship.indexes:
-                            placement_legal = False
-                            break
-
-                    # Ukladanie statkow
-                if placement_legal:
-                    self.ships.append(ship)
-                    placed = True
-
-        self.indexes = [i for ship in self.ships for i in ship.indexes]
+                placed = self.add_ship(Ship(size, rng))
 
     def test_board(self):
         all = [i for ship in self.ships for i in ship.indexes]
@@ -83,11 +121,11 @@ class player:
             print(" ".join(index[row * 10 : (row + 1) * 10]))
 
 class Game: 
-    def __init__(self, human1, human2, rng = None):
+    def __init__(self, human1, human2, rng = None, ships1 = None, ships2 = None):
         self.human1 = human1
         self.human2 = human2
-        self.player1 = player(rng)
-        self.player2 = player(rng)
+        self.player1 = player(rng, ships1)
+        self.player2 = player(rng, ships2)
         self.player1_turn = True
         self.over = False
         self.result = None

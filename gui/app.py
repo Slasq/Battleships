@@ -14,7 +14,16 @@ from .menu import Menu
 from .model_select import MODE_DUEL, MODE_SINGLE, ModelSelect
 from .panel_view import ATTACKS, ATTACK_RECTS
 from .settings import SETTINGS
-from .theme import AI_ORIGIN, BEZEL, BEZEL_EDGE, BG, BG_STRIPE, SCREEN_H, SCREEN_W
+from .theme import (
+    AI_ORIGIN,
+    BEZEL,
+    BEZEL_EDGE,
+    BG,
+    BG_STRIPE,
+    PLAYER_ORIGIN,
+    SCREEN_H,
+    SCREEN_W,
+)
 from .window import Layout, fit_scale
 
 FPS = 60
@@ -309,6 +318,20 @@ class App:
 
     def _game_key(self, key):
         match = self.match
+        if match.phase == "place":
+            if key == pygame.K_r:
+                match.rotate_placing()
+                return
+            if key == pygame.K_BACKSPACE:
+                match.undo_place()
+                return
+            if key == pygame.K_l:
+                match.fill_random()
+                return
+            if key == pygame.K_ESCAPE:
+                self.scene = MENU
+                return
+            return
         if key == pygame.K_a and match.over:
             self.open_analysis()
         elif key == pygame.K_ESCAPE:
@@ -339,6 +362,11 @@ class App:
     def _game_click(self, pos):
         if self.layout.top_rect.collidepoint(pos):
             local = self.layout.local(pos, self.layout.top_rect)
+            if self.match.phase == "place":
+                hit = board_view.hit_test(self.match, local, PLAYER_ORIGIN, enemy=False)
+                if hit is not None:
+                    self.match.place_at(hit)
+                return
             hit = board_view.hit_test(self.match, local, AI_ORIGIN)
             if hit is not None:
                 self.match.cursor = hit

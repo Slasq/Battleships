@@ -14,6 +14,7 @@ MODELS = [
     {
         "name": "BASIC_AI",
         "policy": policies.BASIC,
+        "placer": policies.UNIFORM,
         "epochs": "N/A",
         "winrate": "15.0%",
         "eps": "0.00",
@@ -28,6 +29,7 @@ MODELS = [
     {
         "name": "PROB_MAP",
         "policy": policies.PROBMAP,
+        "placer": policies.UNIFORM,
         "epochs": "N/A",
         "winrate": "45.3%",
         "eps": "0.00",
@@ -42,6 +44,7 @@ MODELS = [
     {
         "name": "DQN_CORE",
         "policy": policies.DQN,
+        "placer": policies.UNIFORM,
         "epochs": "5000",
         "winrate": "58.7%",
         "eps": "0.05",
@@ -56,6 +59,7 @@ MODELS = [
     {
         "name": "COMING_SOON",
         "policy": policies.PROBMAP,
+        "placer": policies.UNIFORM,
         "locked": True,
         "epochs": "N/A",
         "winrate": "0.0%",

@@ -107,3 +107,37 @@ def get(name, fallback=PROBMAP):
     if name in POLICIES and available(name):
         return POLICIES[name]
     return POLICIES[fallback]
+
+
+# Roztawianie kazda zwraca liste statkow jako krotki pól
+UNIFORM = "uniform"
+HUMAN = "human"
+
+
+# Roztawienie z engine
+def place_uniform(rng=None):
+    from engine import player
+
+    return [tuple(ship.indexes) for ship in player(rng=rng).ships]
+
+
+# Rozstawienie wzorowane ruchami czlowieka
+def place_human(rng=None):
+    from ml.probmap.prior import sample_board
+
+    return [tuple(cells) for cells in sample_board(_get_bias(), rng=rng)]
+
+
+PLACERS = {
+    UNIFORM: place_uniform,
+    HUMAN: place_human,
+}
+
+PLACER_LABELS = {
+    UNIFORM: "jednostajne",
+    HUMAN: "jak czlowiek",
+}
+
+
+def placer(name, fallback=UNIFORM):
+    return PLACERS.get(name, PLACERS[fallback])
