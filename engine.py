@@ -2,17 +2,21 @@ import random
 import heuristics
 
 class Ship:
-    def __init__(self, size):
+    def __init__(self, size, rng=None):
+        # Powtarzalna flota
+        if rng is None:
+            rng = random
+
         self.size = size
-        self.orientation = random.choice(["h", "v"])
+        self.orientation = rng.choice(["h", "v"])
 
         # Losowanie pozycji startowej tak aby była na planszy
         if self.orientation == "h":
-            self.row = random.randrange(0, 10)
-            self.col = random.randrange(0, 10 - self.size + 1)
+            self.row = rng.randrange(0, 10)
+            self.col = rng.randrange(0, 10 - self.size + 1)
         else:  # "v"
-            self.row = random.randrange(0, 10 - self.size + 1)
-            self.col = random.randrange(0, 10)
+            self.row = rng.randrange(0, 10 - self.size + 1)
+            self.col = rng.randrange(0, 10)
         self.indexes = self.get_indexes()
 
     def get_indexes(self):
@@ -26,17 +30,17 @@ class Ship:
 
 
 class player:
-    def __init__(self):
+    def __init__(self, rng = None):
         self.ships = []
         self.search = ["U" for i in range(100)] # Nieznana pozycja
-        self.place_ships(sizes = [5, 4, 3, 3, 2])
+        self.place_ships(sizes = [5, 4, 3, 3, 2], rng = rng)
 
-    def place_ships(self, sizes):
+    def place_ships(self, sizes, rng = None):
         for size in sizes: 
             placed = False
             while not placed:
                 # Tworzenie nowego statku
-                ship = Ship(size)
+                ship = Ship(size, rng)
 
                 # Czy pozycja jest legalna
                 placement_legal = True
@@ -79,11 +83,11 @@ class player:
             print(" ".join(index[row * 10 : (row + 1) * 10]))
 
 class Game: 
-    def __init__(self, human1, human2):
+    def __init__(self, human1, human2, rng = None):
         self.human1 = human1
         self.human2 = human2
-        self.player1 = player()
-        self.player2 = player()
+        self.player1 = player(rng)
+        self.player2 = player(rng)
         self.player1_turn = True
         self.over = False
         self.result = None
