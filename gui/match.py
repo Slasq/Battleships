@@ -1,6 +1,6 @@
 import pygame
 
-import agent
+import heuristics as agent
 from engine import Game
 
 from .heatmap import HEAT_LIFT, normalized_density
