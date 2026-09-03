@@ -112,6 +112,7 @@ def get(name, fallback=PROBMAP):
 # Roztawianie kazda zwraca liste statkow jako krotki pól
 UNIFORM = "uniform"
 HUMAN = "human"
+HIDE = "hide"
 
 
 # Roztawienie z engine
@@ -128,14 +129,23 @@ def place_human(rng=None):
     return [tuple(cells) for cells in sample_board(_get_bias(), rng=rng)]
 
 
+# Rozstawienie odchylone od pol, w ktore szukajacy strzela najwczesniej
+def place_hide(rng=None):
+    from ml.probmap.placement import place
+
+    return [tuple(cells) for cells in place(rng)]
+
+
 PLACERS = {
     UNIFORM: place_uniform,
     HUMAN: place_human,
+    HIDE: place_hide,
 }
 
 PLACER_LABELS = {
     UNIFORM: "jednostajne",
     HUMAN: "jak czlowiek",
+    HIDE: "ukrywajace",
 }
 
 

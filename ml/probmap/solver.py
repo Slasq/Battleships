@@ -6,7 +6,7 @@ CELLS = BOARD_SIZE * BOARD_SIZE
 DEFAULT_FLEET = (5, 4, 3, 3, 2)
 
 # Ile razy mocniej wazy rozstawienie za kazde pokryte trafienie
-HIT_WEIGHT = 10.0
+HIT_WEIGHT = 30.0
 
 # Pola zablokowane
 BLOCKED = ("M", "S")
