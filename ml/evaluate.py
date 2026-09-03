@@ -16,9 +16,9 @@ from ml.probmap.prior import load_bias
 from ml.probmap.solver import HIT_WEIGHT, best_move
 
 # Przebieg
-GAMES = 1000
-FLEET_SEED = 12345
-POLICY_SEED = 999
+GAMES = 1000 # 1000
+FLEET_SEED = 1234 # 1234
+POLICY_SEED = 999 # 999
 
 # Rozkład ukrytego roztawienia
 BIAS_SEED = 777
