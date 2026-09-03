@@ -130,10 +130,10 @@ def place_human(rng=None):
 
 
 # Rozstawienie odchylone od pol, w ktore szukajacy strzela najwczesniej
-def place_hide(rng=None):
-    from ml.probmap.placement import place
+def place_hide(rng=None, beta=None):
+    from ml.probmap.placement import BETA, place
 
-    return [tuple(cells) for cells in place(rng)]
+    return [tuple(cells) for cells in place(rng, BETA if beta is None else beta)]
 
 
 PLACERS = {
