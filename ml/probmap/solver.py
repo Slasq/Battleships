@@ -12,8 +12,7 @@ HIT_WEIGHT = 30.0
 BLOCKED = ("M", "S")
 
 # Ufnosc dla ludzkiej imitacji
-# 0 wylaczone 1 naiwny prog wag 
-PRIOR_STRENGTH = 1.0
+PRIOR_STRENGTH = 0.75
 
 
 # Wszystkie rozstawienia statku danej dlugosci na pustej planszy
