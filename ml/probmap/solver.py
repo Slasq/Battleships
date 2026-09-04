@@ -191,11 +191,33 @@ def probability_map(search, sizes=None, fleet=DEFAULT_FLEET, hit_weight=HIT_WEIG
 
     return [w / total for w in weights]
 
+# Filtr prawdop wylacza sie jesli na planszy jest nie zniszczony statek
+def parity_filter(probs, search, sizes=None, fleet=DEFAULT_FLEET):
+
+    # Jesli cięzko roztrzygnać preferowane jest dobijanie
+    if any(s == "H" for s in search):
+        return probs
+
+    board_size = int(round(len(search) ** 0.5))
+
+    if sizes is None:
+        sizes = [s for s, c in remaining_counts(search, fleet, board_size).items() if c > 0.0]
+
+    step = min(sizes) if sizes else 1
+    if step < 2:
+        return probs
+
+    krata = [p if ((i // board_size + i % board_size) % step == 0) else 0.0
+             for i, p in enumerate(probs)]
+
+    return krata if max(krata) > 0.0 else probs
+
 
 # Pole o najwyzszej szansie lub None gdy nie ma gdzie strzelac
 def best_move(search, sizes=None, fleet=DEFAULT_FLEET, hit_weight=HIT_WEIGHT, rng=None,
               bias=None, prior_strength=PRIOR_STRENGTH):
     probs = probability_map(search, sizes, fleet, hit_weight, bias, prior_strength)
+    probs = parity_filter(probs, search, sizes, fleet)
 
     best = max(probs)
     if best == 0.0:
