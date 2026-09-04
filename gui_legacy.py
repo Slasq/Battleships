@@ -62,10 +62,11 @@ MODEL_KEYS = [
 ai_name = pol.PROBMAP
 ai_move = pol.get(ai_name)
 
-# Rozstawienie floty przeciwnika, klawisze Q i W
+# Rozstawienie floty wroga Q, W, E
 PLACER_KEYS = [
     (pygame.K_q, pol.UNIFORM),
     (pygame.K_w, pol.HUMAN),
+    (pygame.K_e, pol.HIDE),
 ]
 
 placer_name = pol.UNIFORM
@@ -252,7 +253,7 @@ while animation:
         else:
             shots = sum(1 for s in game.player1.search if s != "U")
             tura = "twoj ruch" if game.player1_turn else "ruch przeciwnika"
-            hud = (f"model: {ai_name} [1-5]   flota AI: {placer_name} [Q/W]"
+            hud = (f"model: {ai_name} [1-5]   flota AI: {placer_name} [Q/W/E]"
                    f"   {tura}   twoje strzaly: {shots}")
 
         SCREEN.blit(small_font.render(hud, True, WHITE, GREY), (4, GRID_SIZE * 10 + 4))
