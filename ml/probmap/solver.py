@@ -78,17 +78,84 @@ def remaining_sizes(search, fleet=DEFAULT_FLEET, board_size=BOARD_SIZE):
         remaining.remove(size)
     return remaining
 
+
+# S to rózne floty po zatopieniu uklad sie zmienia a wynik sie zapisuje
+@lru_cache(maxsize=None)
+def cover_options(cells, sizes, board_size, limit=64):
+    found = set()
+
+    def walk(left, avail, used):
+        if len(found) >= limit:
+            return
+
+        if not left:
+            found.add(tuple(sorted(used)))
+            return
+
+        # Start od najmniejszej
+        target = min(left)
+
+        # Blokada by nie powtarzac
+        for pos, size in enumerate(avail):
+            if size in avail[:pos]:
+                continue
+
+            for placement in placements(size, board_size):
+                if target not in placement:
+                    continue
+                if not left.issuperset(placement):
+                    continue
+
+                walk(left - set(placement), avail[:pos] + avail[pos + 1:], used + [size])
+
+    walk(set(cells), tuple(sizes), [])
+
+    # forzenset z wynikami
+    return frozenset(found)
+
+
+# Średnia ile jeszcze jest dlugości statkow
+def remaining_counts(search, fleet=DEFAULT_FLEET, board_size=BOARD_SIZE):
+    sunk_cells = frozenset(i for i, s in enumerate(search) if s == "S")
+    options = cover_options(sunk_cells, tuple(fleet), board_size) if sunk_cells else set()
+
+    if not options:
+        options = {()}
+
+    counts = {}
+    total = 0.0
+
+    for used in options:
+        rest = list(fleet)
+        for size in used:
+            rest.remove(size)
+
+        # Trzy statki w jednej lini dla utrudnienia
+        waga = 1.0
+        for size in used:
+            waga /= len(placements(size, board_size))
+
+        total += waga
+        for size in rest:
+            counts[size] = counts.get(size, 0.0) + waga
+
+    return {size: c / total for size, c in counts.items()}
+
+
 # Mapa wag dla starkows
 def probability_map(search, sizes=None, fleet=DEFAULT_FLEET, hit_weight=HIT_WEIGHT,
                     bias=None, prior_strength=PRIOR_STRENGTH):
     board_size = int(round(len(search) ** 0.5))
 
     if sizes is None:
-        sizes = remaining_sizes(search, fleet, board_size)
+        counts = remaining_counts(search, fleet, board_size)
+    else:
+        # count dla dlugosci
+        counts = {size: float(list(sizes).count(size)) for size in set(sizes)}
 
     weights = [0.0] * len(search)
 
-    for size in sizes:
+    for size, count in counts.items():
         for placement in placements(size, board_size):
             hits = 0
             legal = True
@@ -116,7 +183,7 @@ def probability_map(search, sizes=None, fleet=DEFAULT_FLEET, hit_weight=HIT_WEIG
 
             for i in placement:
                 if search[i] == "U":
-                    weights[i] += weight
+                    weights[i] += count * weight
 
     total = sum(weights)
     if total == 0.0:
