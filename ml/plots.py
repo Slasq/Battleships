@@ -61,6 +61,21 @@ def _label(placer, beta):
         return f"hide b{beta:g}"
     return pol.PLACER_LABELS[placer]
 
+
+# Poprawiona kolejnosc
+def _order(frame):
+    return list(frame["label"].unique())
+
+
+# To samo dla legend
+def _agents(frame):
+    return [a for a in AGENT_ORDER if a in set(frame["agent"])]
+
+
+# slug order
+def _slug(label):
+    return label.replace(" ", "_")
+
 def figure_heat(samples):
     panels = [("gestosc, pusta plansza", probability_map(["U"] * CELLS), "rocket", None)]
     panels.append(("prior ludzki", load_bias(), "vlag", 1.0))
@@ -168,6 +183,7 @@ def collect(games, seed, samples):
 def figure_table(data, games):
     table = data.pivot_table(index="agent", columns="label", values="shots", aggfunc="mean")
     table = table.loc[[a for a in AGENT_ORDER if a in table.index]]
+    table = table[_order(data)]
 
     fig, ax = plt.subplots(figsize=(1.6 * len(table.columns) + 3, 0.7 * len(table) + 2))
     sns.heatmap(table, annot=True, fmt=".1f", cmap="rocket_r", linewidths=0.5,
@@ -206,20 +222,25 @@ def figure_ecdf(data, placer, beta):
     label = _label(placer, beta)
     subset = data[data["label"] == label]
 
+    # Usuniecie pustych siatek
+    if subset.empty:
+        raise SystemExit(f"Brak pomiarow dla {label}. Zmierzone: {', '.join(_order(data))}")
+
     fig, ax = plt.subplots(figsize=(7.5, 5))
-    sns.ecdfplot(data=subset, x="shots", hue="agent", ax=ax)
+    sns.ecdfplot(data=subset, x="shots", hue="agent", hue_order=_agents(subset), ax=ax)
 
     ax.set_xlabel("liczba strzalow do zatopienia floty")
     ax.set_ylabel("odsetek partii")
     ax.set_title(f"Rozklad liczby strzalow, rozstawienie {label}")
 
-    return _save(fig, "probmap_shots_ecdf.png")
+    return _save(fig, f"probmap_shots_ecdf_{_slug(label)}.png")
 
 def figure_spread(data):
     subset = data[data["agent"] != "random"]
 
     fig, ax = plt.subplots(figsize=(11, 5.5))
-    sns.boxplot(data=subset, x="label", y="shots", hue="agent", fliersize=1, ax=ax)
+    sns.boxplot(data=subset, x="label", y="shots", hue="agent", fliersize=1,
+                order=_order(data), hue_order=_agents(subset), ax=ax)
 
     ax.set_xlabel("rozstawienie floty")
     ax.set_ylabel("liczba strzalow")
@@ -235,7 +256,8 @@ def figure_edge(data):
     edge = edge.reset_index().melt(id_vars="label", var_name="agent", value_name="delta")
 
     fig, ax = plt.subplots(figsize=(9, 5))
-    sns.barplot(data=edge, x="label", y="delta", hue="agent", ax=ax)
+    sns.barplot(data=edge, x="label", y="delta", hue="agent",
+                order=_order(data), hue_order=_agents(edge), ax=ax)
     ax.axhline(0, color="black", linewidth=1)
 
     ax.set_xlabel("rozstawienie floty")
@@ -248,6 +270,10 @@ def figure_accuracy(accuracy, placer, beta):
     label = _label(placer, beta)
     subset = accuracy[accuracy["label"] == label].sort_values("step")
 
+    # Usuniecie pustych siatek
+    if subset.empty:
+        raise SystemExit(f"Brak pomiarow dla {label}. Zmierzone: {', '.join(_order(accuracy))}")
+
     fig, ax = plt.subplots(figsize=(8.5, 5))
 
     for agent, chunk in subset.groupby("agent"):
@@ -259,14 +285,15 @@ def figure_accuracy(accuracy, placer, beta):
     ax.set_title(f"Celnosc w trakcie partii, rozstawienie {label}, srednia z {WINDOW} krokow")
     ax.legend()
 
-    return _save(fig, "probmap_accuracy.png")
+    return _save(fig, f"probmap_accuracy_{_slug(label)}.png")
 
 def figure_adjacent(data):
     grouped = data.groupby(["label", "agent"], as_index=False)[["adj_ok", "adj_total"]].sum()
     grouped["dobijanie"] = 100.0 * grouped["adj_ok"] / grouped["adj_total"].clip(lower=1)
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    sns.barplot(data=grouped, x="label", y="dobijanie", hue="agent", ax=ax)
+    sns.barplot(data=grouped, x="label", y="dobijanie", hue="agent",
+                order=_order(data), hue_order=_agents(grouped), ax=ax)
 
     ax.set_xlabel("rozstawienie floty")
     ax.set_ylabel("odsetek krokow")
